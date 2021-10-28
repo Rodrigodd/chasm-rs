@@ -45,25 +45,9 @@ where
     }
 }
 
-#[repr(u8)]
-enum Section {
-    Type = 1,
-    Func = 3,
-    Export = 7,
-    Code = 0xa,
-}
-
-// https://webassembly.github.io/spec/core/binary/modules.html#sections
-// sections are encoded by their type followed by their vector contents
-fn create_section(section_type: Section, data: &[u8]) -> Vec<u8> {
-    let mut section = Vec::new();
-    section.push(section_type as u8);
-    uleb128(&mut section, data.len() as u64).unwrap();
-    section.write(data).unwrap();
-    section
-}
-
+/// A macro for writing webassembly in binary format.
 macro_rules! wasm {
+    // create a new Vector<u8>
     (new  $($e:tt)*) => {
         {
             let mut vec = Vec::new();
@@ -74,37 +58,34 @@ macro_rules! wasm {
     ($w:expr, $( ( $($e:tt)* ) )*) => {
         $( wasm!( $w, $($e)* ); )*
     };
-	($w:expr, get_local $e:literal) => {
-		($w).write(&[0x20]).unwrap();
-        uleb128($w, $e).unwrap();
-	};
 	($w:expr, str $e:literal) => {
         {
             let data = ($e).as_bytes();
-            uleb128(&mut $w, data.len() as u64).unwrap();
+            uleb128($w, data.len() as u64).unwrap();
             ($w).write(data).unwrap();
         }
 	};
 	($w:expr, $e:literal) => {
         uleb128($w, $e).unwrap();
 	};
+    // write a u8 slice, but prepend its lenght first
     ($w:expr, data $e:expr) => {
         uleb128($w, ($e).len() as u64).unwrap();
         ($w).write($e).unwrap();
     };
-	($w:expr, i32.add) => {
-		($w).write(&[0x6a]).unwrap();
-	};
+    // write each element, but prepend the number of elements first
     ($w:expr, vec $($e:tt)*) => {
         {
             let mut vector = Vec::<u8>::new();
             let mut n = 0;
             $(
                 wasm!( &mut vector, $e );
-                n += 1; 
+                n += 1;
             )*
             uleb128($w, n).unwrap();
             ($w).write(&vector).unwrap();
+            drop(&mut vector);
+            drop(&mut n);
         }
     };
 	($w:expr, end) => {
@@ -123,24 +104,66 @@ macro_rules! wasm {
 		($w).write(&[0x00]).unwrap();
 	};
 
+    // get_local instruction
+	($w:expr, get_local $e:literal) => {
+		($w).write(&[0x20]).unwrap();
+        uleb128($w, $e).unwrap();
+	};
+    // i32.add instruction
+	($w:expr, i32.add) => {
+		($w).write(&[0x6a]).unwrap();
+	};
+
+    // creates a section
+    // https://webassembly.github.io/spec/core/binary/modules.html#binary-section
+    ($w:expr, section $id:tt $e:tt) => {
+        ($w).write(&[section_type!($id)]).unwrap();
+        let mut section = Vec::new();
+        wasm!(&mut section, $e);
+        uleb128($w, section.len() as u64).unwrap();
+        ($w).write(&section).unwrap();
+    };
+    // create a functype, is used in the type section
+    // https://webassembly.github.io/spec/core/binary/types.html#binary-functype
+    ($w:expr, functype $param:tt $result:tt) => {
+        ($w).write(&[0x60]).unwrap();
+        wasm!($w, $param);
+        wasm!($w, $result);
+    };
+
+    // creates a export, in used in the export section
+    // https://webassembly.github.io/spec/core/binary/modules.html#binary-export
+    ($w:expr, export $name:literal $id:tt $idx:tt) => {
+        {
+            let name = ($name).as_bytes();
+            uleb128($w, name.len() as u64).unwrap();
+            ($w).write(name).unwrap();
+        }
+        ($w).write(&[export_type!($id)]).unwrap();
+        uleb128($w, $idx as u64).unwrap();
+    };
+
+
+}
+
+#[rustfmt::skip]
+macro_rules! section_type {
+    (type) => { 1 };
+    (function) => { 3 };
+    (export) => { 7 };
+    (code) => { 10 };
+}
+
+#[rustfmt::skip]
+macro_rules! export_type {
+    (function) => { 0x00 };
+    (table) => { 0x01 };
+    (memory) => { 0x02 };
+    (global) => { 0x03 };
 }
 
 /// Compile the given chasm code in a wasm binary.
-pub fn compile(code: &str) -> anyhow::Result<Vec<u8>> {
-    // (section type (vec (func (vec i32 i32) (vec i32)))
-    // (section func (vec 0))
-    // (section export (vec ((str "main") func 0x0)))
-    // (section code (vec (size func)))
-
-    let types = wasm!(new (vec ((functype) (vec i32 i32) (vec i32))));
-    let type_section = create_section(Section::Type, &types);
-
-    let func_section = create_section(Section::Func, &wasm!(new (vec 0x0)));
-
-    let export_section = create_section(
-        Section::Export,
-        &wasm!(new (vec ((str "main") (exporttypefunc) (0x00)))),
-    );
+pub fn compile(_code: &str) -> anyhow::Result<Vec<u8>> {
 
     let mut function = Vec::new();
     // locals
@@ -154,18 +177,23 @@ pub fn compile(code: &str) -> anyhow::Result<Vec<u8>> {
     }
 
     let mut functions = Vec::<u8>::new();
-    wasm!(&mut functions, (vec (data &function)));
-    let code_section = create_section(Section::Code, &functions);
+    wasm!(&mut functions, (vec(data & function)));
 
     let mut binary = Vec::new();
     // magic module header
     binary.write(b"\0asm").unwrap();
     // module version
     binary.write(&[1, 0, 0, 0]).unwrap();
-    binary.write(&type_section).unwrap();
-    binary.write(&func_section).unwrap();
-    binary.write(&export_section).unwrap();
-    binary.write(&code_section).unwrap();
+    wasm!( &mut binary,
+           (section type (vec (functype (vec i32 i32) (vec i32))))
+           (section function (vec 0))
+           (section export (vec (export "main" function 0x0)))
+           (section code (vec (data &function)))
+    );
+    // binary.write(&type_section).unwrap();
+    // binary.write(&func_section).unwrap();
+    // binary.write(&export_section).unwrap();
+    // binary.write(&code_section).unwrap();
 
     Ok(binary)
 }
