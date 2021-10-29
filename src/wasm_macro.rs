@@ -11,16 +11,21 @@ macro_rules! wasm {
     ($w:expr, $( ( $($e:tt)* ) )*) => {
         $( wasm!( $w, $($e)* ); )*
     };
-	    ($w:expr, str $e:literal) => {
+    // write the b"\0asm" magic header, and the version 0x0100_0000
+    ($w:expr, magic version) => {
+        ($w).write(b"\0asm").unwrap();
+        ($w).write(&[0x01, 0x00, 0x00, 0x00]).unwrap();
+    };
+    ($w:expr, str $e:literal) => {
         {
             let data = ($e).as_bytes();
             uleb128($w, data.len() as u64).unwrap();
             ($w).write(data).unwrap();
         }
-	    };
-	    ($w:expr, $e:literal) => {
+    };
+    ($w:expr, $e:literal) => {
         uleb128($w, $e).unwrap();
-	    };
+    };
     // write a u8 slice, but prepend its lenght first
     ($w:expr, data $e:expr) => {
         uleb128($w, ($e).len() as u64).unwrap();
@@ -95,7 +100,7 @@ macro_rules! wasm {
         ($w).write(&[wasm!(export_type $id)]).unwrap();
         uleb128($w, $idx as u64).unwrap();
     };
-    
+
     (section_type type) => { 1 };
     (section_type function) => { 3 };
     (section_type export) => { 7 };
@@ -106,6 +111,5 @@ macro_rules! wasm {
     (export_type memory) => { 0x02 };
     (export_type global) => { 0x03 };
 }
-
 
 pub(crate) use wasm;

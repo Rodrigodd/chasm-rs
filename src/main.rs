@@ -1,5 +1,5 @@
-use std::io::Write;
 use leb128::write::unsigned as uleb128;
+use std::io::Write;
 
 mod run_wasm;
 mod wasm_macro;
@@ -7,31 +7,22 @@ use wasm_macro::wasm;
 
 /// Compile the given chasm code in a wasm binary.
 pub fn compile(_code: &str) -> anyhow::Result<Vec<u8>> {
-
-    let mut function = Vec::new();
-    // locals
-    wasm!(&mut function, (vec));
-    // code
-    wasm! {&mut function,
+    let main_function = wasm! {new
+        // locals
+        (vec)
+        // code
         (get_local 0)
         (get_local 1)
         (i32.add)
         (end)
-    }
+    };
 
-    let mut functions = Vec::<u8>::new();
-    wasm!(&mut functions, (vec(data & function)));
-
-    let mut binary = Vec::new();
-    // magic module header
-    binary.write(b"\0asm").unwrap();
-    // module version
-    binary.write(&[1, 0, 0, 0]).unwrap();
-    wasm!( &mut binary,
+    let binary = wasm!( new
+           (magic version)
            (section type (vec (functype (vec i32 i32) (vec i32))))
            (section function (vec 0))
            (section export (vec (export "main" function 0x0)))
-           (section code (vec (data &function)))
+           (section code (vec (data &main_function)))
     );
 
     Ok(binary)
