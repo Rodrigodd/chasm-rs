@@ -5,32 +5,38 @@ mod run_wasm;
 mod wasm_macro;
 use wasm_macro::wasm;
 
-/// Compile the given chasm code in a wasm binary.
-pub fn compile(_code: &str) -> anyhow::Result<Vec<u8>> {
-    let main_function = wasm! {new
+mod compiler;
+
+/// Compile the given chasm source code in a wasm binary.
+pub fn compile(source: &str) -> anyhow::Result<Vec<u8>> {
+    let mut main_function = wasm! {new
         // locals
         (vec)
-        // code
-        (get_local 0)
-        (get_local 1)
-        (i32.add)
-        (end)
     };
 
+    // code
+    compiler::Parser::parse(source, &mut main_function)?;
+
+    wasm!(&mut main_function, (end));
+
     let binary = wasm!( new
-           (magic version)
-           (section type (vec (functype (vec i32 i32) (vec i32))))
-           (section function (vec 0))
-           (section export (vec (export "main" function 0x0)))
-           (section code (vec (data &main_function)))
+        (magic version)
+        (section type (vec
+            (functype (vec f32) (vec))
+            (functype (vec i32 i32) (vec))
+        ))
+        (section import (vec (import "env" "print" function 0x0)))
+        (section function (vec 1))
+        (section export (vec (export "main" function 0x1)))
+        (section code (vec (data &main_function)))
     );
 
     Ok(binary)
 }
 
 #[test]
-fn run_add() -> anyhow::Result<()> {
-    let binary = compile("")?;
+fn print() -> anyhow::Result<()> {
+    let binary = compile("print 12")?;
     run_wasm::run_binary(&binary)
 }
 

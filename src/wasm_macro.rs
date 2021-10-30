@@ -19,16 +19,16 @@ macro_rules! wasm {
     ($w:expr, str $e:literal) => {
         {
             let data = ($e).as_bytes();
-            uleb128($w, data.len() as u64).unwrap();
+            leb128::write::unsigned($w, data.len() as u64).unwrap();
             ($w).write(data).unwrap();
         }
     };
     ($w:expr, $e:literal) => {
-        uleb128($w, $e).unwrap();
+        leb128::write::unsigned($w, $e).unwrap();
     };
     // write a u8 slice, but prepend its lenght first
     ($w:expr, data $e:expr) => {
-        uleb128($w, ($e).len() as u64).unwrap();
+        leb128::write::unsigned($w, ($e).len() as u64).unwrap();
         ($w).write($e).unwrap();
     };
     // write each element, but prepend the number of elements first
@@ -40,37 +40,47 @@ macro_rules! wasm {
                 wasm!( &mut vector, $e );
                 n += 1;
             )*
-            uleb128($w, n).unwrap();
+            leb128::write::unsigned($w, n).unwrap();
             ($w).write(&vector).unwrap();
             drop(&mut vector);
             drop(&mut n);
         }
     };
-	    ($w:expr, end) => {
-		    ($w).write(&[0x0b]).unwrap();
-	    };
-	    ($w:expr, functype) => {
-		    ($w).write(&[0x60]).unwrap();
-	    };
-	    ($w:expr, i32) => {
-		    ($w).write(&[0x7f]).unwrap();
-	    };
-	    ($w:expr, f32) => {
-		    ($w).write(&[0x7d]).unwrap();
-	    };
-	    ($w:expr, exporttypefunc) => {
-		    ($w).write(&[0x00]).unwrap();
-	    };
+    ($w:expr, end) => {
+        ($w).write(&[0x0b]).unwrap();
+    };
+    ($w:expr, functype) => {
+        ($w).write(&[0x60]).unwrap();
+    };
+    ($w:expr, i32) => {
+        ($w).write(&[0x7f]).unwrap();
+    };
+    ($w:expr, f32) => {
+        ($w).write(&[0x7d]).unwrap();
+    };
+    ($w:expr, exporttypefunc) => {
+        ($w).write(&[0x00]).unwrap();
+    };
 
+    // call instruction
+    ($w:expr, call $funcidx:expr) => {
+        ($w).write(&[0x10]).unwrap();
+        leb128::write::unsigned($w, $funcidx).unwrap();
+    };
+    // f32.const instruction
+    ($w:expr, f32.const $z:expr) => {
+        ($w).write(&[0x43]).unwrap();
+        ($w).write(&($z).to_le_bytes()).unwrap();
+    };
     // get_local instruction
-	    ($w:expr, get_local $e:literal) => {
-		    ($w).write(&[0x20]).unwrap();
-        uleb128($w, $e).unwrap();
-	    };
+    ($w:expr, get_local $e:literal) => {
+        ($w).write(&[0x20]).unwrap();
+        leb128::write::unsigned($w, $e).unwrap();
+    };
     // i32.add instruction
-	    ($w:expr, i32.add) => {
-		    ($w).write(&[0x6a]).unwrap();
-	    };
+    ($w:expr, i32.add) => {
+        ($w).write(&[0x6a]).unwrap();
+    };
 
     // creates a section
     // https://webassembly.github.io/spec/core/binary/modules.html#binary-section
@@ -78,7 +88,7 @@ macro_rules! wasm {
         ($w).write(&[wasm!(section_type $id)]).unwrap();
         let mut section = Vec::new();
         wasm!(&mut section, $e);
-        uleb128($w, section.len() as u64).unwrap();
+        leb128::write::unsigned($w, section.len() as u64).unwrap();
         ($w).write(&section).unwrap();
     };
     // create a functype, is used in the type section
@@ -94,14 +104,32 @@ macro_rules! wasm {
     ($w:expr, export $name:literal $id:tt $idx:tt) => {
         {
             let name = ($name).as_bytes();
-            uleb128($w, name.len() as u64).unwrap();
+            leb128::write::unsigned($w, name.len() as u64).unwrap();
             ($w).write(name).unwrap();
         }
         ($w).write(&[wasm!(export_type $id)]).unwrap();
-        uleb128($w, $idx as u64).unwrap();
+        leb128::write::unsigned($w, $idx as u64).unwrap();
+    };
+
+    // creates a import, in used in the import section
+    // https://webassembly.github.io/spec/core/binary/modules.html#binary-import
+    ($w:expr, import $mod:literal $name:literal $id:tt $idx:tt) => {
+        {
+            let module = ($mod).as_bytes();
+            leb128::write::unsigned($w, module.len() as u64).unwrap();
+            ($w).write(module).unwrap();
+        }
+        {
+            let name = ($name).as_bytes();
+            leb128::write::unsigned($w, name.len() as u64).unwrap();
+            ($w).write(name).unwrap();
+        }
+        ($w).write(&[wasm!(export_type $id)]).unwrap();
+        leb128::write::unsigned($w, $idx as u64).unwrap();
     };
 
     (section_type type) => { 1 };
+    (section_type import) => { 2 };
     (section_type function) => { 3 };
     (section_type export) => { 7 };
     (section_type code) => { 10 };

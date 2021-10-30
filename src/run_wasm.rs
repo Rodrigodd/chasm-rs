@@ -40,11 +40,11 @@ pub fn run_binary(binary: &[u8]) -> anyhow::Result<()> {
     let module = Module::new(&store, &binary)?;
     let import_object = imports! {
         "env" => {
-            "print" => Function::new_native(&store, |x: i32| println!("{}", x))
+            "print" => Function::new_native(&store, |x: f32| println!("{}", x))
         }
     };
     let instance = Instance::new(&module, &import_object)?;
     let main = instance.exports.get_function("main")?;
-    println!("{:?}", main.call(&[Value::I32(8), Value::I32(9)])?[0]);
+    println!("{:?}", main.call(&[Value::I32(8), Value::I32(9)])?);
     Ok(())
 }
