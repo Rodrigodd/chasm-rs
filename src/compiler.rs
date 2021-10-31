@@ -46,7 +46,7 @@ impl<'s, 'b> Parser<'s, 'b> {
             w 
         };
         parser.eat_token();
-        parser.statement()?;
+        parser.statements()?;
         Ok(())
     }
 
@@ -63,10 +63,17 @@ impl<'s, 'b> Parser<'s, 'b> {
         }
     }
 
+    fn statements(&mut self) -> Res {
+        while self.current.0 != Token::Error {
+            self.statement()?;
+        }
+        Ok(())
+    }
+
     fn statement(&mut self) -> Res {
         match self.current.0  {
             Token::Print => self.print_statement()?,
-            _ => {}
+            _ => return Err(Error::ParseError { expected: Token::Print, received: self.current.0.clone() })
         }
         Ok(())
     }
@@ -85,9 +92,10 @@ impl<'s, 'b> Parser<'s, 'b> {
                     Ok(x) => x,
                     Err(err) => return Err(Error::ParseFloatError(err)),
                 };
+                self.match_token(Token::Number)?;
                 wasm!(self.w, (f32.const number));
             }
-            _ => self.match_token(Token::Number)?,
+            _ => return Err(Error::ParseError { expected: Token::Number, received: self.current.0.clone() }),
         }
         Ok(())
     }
