@@ -25,8 +25,6 @@ pub enum Error {
     ParseError { expected: Token, received: Token },
     #[error("Failed to parse float number ({0})")]
     ParseFloatError(ParseFloatError),
-    #[error("Error")]
-    Error,
 }
 
 type Res = Result<(), Error>;

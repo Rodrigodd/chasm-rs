@@ -1,11 +1,14 @@
-use leb128::write::unsigned as uleb128;
 use std::io::Write;
+use std::sync::{Arc, Mutex};
 
 mod run_wasm;
 mod wasm_macro;
 use wasm_macro::wasm;
 
 mod compiler;
+
+#[cfg(test)]
+mod test;
 
 /// Compile the given chasm source code in a wasm binary.
 pub fn compile(source: &str) -> anyhow::Result<Vec<u8>> {
@@ -32,12 +35,6 @@ pub fn compile(source: &str) -> anyhow::Result<Vec<u8>> {
     );
 
     Ok(binary)
-}
-
-#[test]
-fn print() -> anyhow::Result<()> {
-    let binary = compile("print 12")?;
-    run_wasm::run_binary(&binary)
 }
 
 fn main() -> anyhow::Result<()> {
@@ -67,8 +64,19 @@ fn main() -> anyhow::Result<()> {
         ))
         "#;
 
+    pub struct ToWriteFmt<T>(pub T);
+
+    impl<T> std::fmt::Write for ToWriteFmt<T>
+    where
+        T: std::io::Write,
+    {
+        fn write_str(&mut self, s: &str) -> std::fmt::Result {
+            self.0.write_all(s.as_bytes()).map_err(|_| std::fmt::Error)
+        }
+    }
+
     let binary = wat::parse_str(module_wat)?;
-    run_wasm::run_binary(&binary)?;
+    run_wasm::run_binary(&binary, Arc::new(Mutex::new(ToWriteFmt(std::io::stdout()))))?;
 
     Ok(())
 }

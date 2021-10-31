@@ -1,3 +1,6 @@
+use std::fmt::Write;
+use std::sync::{Arc, Mutex};
+
 use wasmer::{imports, Function, Instance, Module, Store, Value};
 
 fn dump_hex(data: &[u8]) {
@@ -33,14 +36,30 @@ fn dump_hex(data: &[u8]) {
         offset += D;
     }
 }
+use wasmer::WasmerEnv;
 
-pub fn run_binary(binary: &[u8]) -> anyhow::Result<()> {
+pub fn run_binary<W: Write + Send + 'static>(binary: &[u8], out: Arc<Mutex<W>>) -> anyhow::Result<()> {
     dump_hex(&binary);
+
+    struct Writer<W: Send> {
+        w: Arc<Mutex<W>>,
+    }
+    impl<W: Send> WasmerEnv for Writer<W> {}
+    impl<W: Send> Clone for Writer<W> {
+        fn clone(&self) -> Self {
+            Self { w: self.w.clone() }
+        }
+    }
+
+    let writer = Writer {
+        w: out,
+    };
+
     let store = Store::default();
     let module = Module::new(&store, &binary)?;
     let import_object = imports! {
         "env" => {
-            "print" => Function::new_native(&store, |x: f32| println!("{}", x))
+            "print" => Function::new_native_with_env(&store, writer, |out: &Writer<W>, x: f32| writeln!(&mut *out.w.lock().unwrap(), "{}", x))
         }
     };
     let instance = Instance::new(&module, &import_object)?;
