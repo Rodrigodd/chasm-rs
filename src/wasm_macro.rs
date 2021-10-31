@@ -79,9 +79,32 @@ macro_rules! wasm {
     };
     // i32.add instruction
     ($w:expr, i32.add) => {
-        ($w).write(&[0x6a]).unwrap();
+        { ($w).write(&[0x6a]).unwrap(); }
     };
-
+    ($w:expr, f32.add) => {
+        { ($w).write(&[0x92]).unwrap(); }
+    };
+    ($w:expr, f32.sub) => {
+        { ($w).write(&[0x93]).unwrap(); }
+    };
+    ($w:expr, f32.mul) => {
+        { ($w).write(&[0x94]).unwrap(); }
+    };
+    ($w:expr, f32.div) => {
+        { ($w).write(&[0x95]).unwrap(); }
+    };
+    ($w:expr, f32.eq ) => {
+        { ($w).write(&[0x5b]).unwrap(); }
+    };
+    ($w:expr, f32.lt ) => {
+        { ($w).write(&[0x5d]).unwrap(); }
+    };
+    ($w:expr, f32.gt ) => {
+        { ($w).write(&[0x5e]).unwrap(); }
+    };
+    ($w:expr, i32.and) => {
+        { ($w).write(&[0x71]).unwrap(); }
+    };
     // creates a section
     // https://webassembly.github.io/spec/core/binary/modules.html#binary-section
     ($w:expr, section $id:tt $e:tt) => {

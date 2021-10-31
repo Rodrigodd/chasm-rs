@@ -14,8 +14,10 @@ macro_rules! test_output {
 
 test_output!(
     (print_12, "print 12", "12\n")
-    (print_n12, "print -8", "-8\n")
+    (print_n8, "print -8", "-8\n")
     (mult_print, "print 12 print -8 print 44 print 0.1 print -1e-02", "12\n-8\n44\n0.1\n-0.01\n")
+    (print_1p1, "print (1 + 1)", "2\n")
+    (print_expr3, "print ((3*2) - (21/7))", "3\n")
 );
 
 fn check_output(source: &str, expected: &str) -> anyhow::Result<()> {

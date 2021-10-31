@@ -6,12 +6,22 @@ use std::num::ParseFloatError;
 pub enum Token {
     // this regex for number don't make much sense, but it is this way in my reference:
     // https://github.com/ColinEberhardt/chasm/blob/master/src/tokenizer.ts#L41
-    #[regex("-?[.0-9]+([eE]-?[0-9][0-9])?")]
+    #[regex(r"-?[.0-9]+([eE]-?[0-9][0-9])?")]
     Number,
     #[token("print")]
     Print,
+    #[regex(r"(\+|-|\*|/|==|<|>|&&|,)")]
+    Operator,
+    #[regex(r"[a-zA-Z]+")]
+    Identifier,
+    #[token("=")]
+    Assignment,
+    #[token("(")]
+    LeftParen,
+    #[token(")")]
+    RightParen,
     #[error]
-    #[regex("\\s+", logos::skip)]
+    #[regex(r"\s+", logos::skip)]
     Error,
 }
 
@@ -43,7 +53,7 @@ impl<'s, 'b> Parser<'s, 'b> {
             source,
             current: (Token::Error, 0..0),
             lexer,
-            w 
+            w,
         };
         parser.eat_token();
         parser.statements()?;
@@ -56,7 +66,10 @@ impl<'s, 'b> Parser<'s, 'b> {
 
     fn match_token(&mut self, token: Token) -> Res {
         if self.current.0 != token {
-            Err(Error::ParseError { expected: token, received: self.current.0.clone() })
+            Err(Error::ParseError {
+                expected: token,
+                received: self.current.0.clone(),
+            })
         } else {
             self.eat_token();
             Ok(())
@@ -71,9 +84,14 @@ impl<'s, 'b> Parser<'s, 'b> {
     }
 
     fn statement(&mut self) -> Res {
-        match self.current.0  {
+        match self.current.0 {
             Token::Print => self.print_statement()?,
-            _ => return Err(Error::ParseError { expected: Token::Print, received: self.current.0.clone() })
+            _ => {
+                return Err(Error::ParseError {
+                    expected: Token::Print,
+                    received: self.current.0.clone(),
+                })
+            }
         }
         Ok(())
     }
@@ -95,7 +113,39 @@ impl<'s, 'b> Parser<'s, 'b> {
                 self.match_token(Token::Number)?;
                 wasm!(self.w, (f32.const number));
             }
-            _ => return Err(Error::ParseError { expected: Token::Number, received: self.current.0.clone() }),
+            Token::LeftParen => {
+                self.match_token(Token::LeftParen)?;
+
+                // left
+                self.expression()?;
+
+                let op = self.current.clone();
+                self.match_token(Token::Operator)?;
+
+                // right
+                self.expression()?;
+
+                // op
+                match &self.source[op.1] {
+                    "+" => wasm!(self.w, f32.add),
+                    "-" => wasm!(self.w, f32.sub),
+                    "*" => wasm!(self.w, f32.mul),
+                    "/" => wasm!(self.w, f32.div),
+                    "==" => wasm!(self.w, f32.eq),
+                    "<" => wasm!(self.w, f32.lt),
+                    ">" => wasm!(self.w, f32.gt),
+                    "&&" => wasm!(self.w, i32.and),
+                    _ => unreachable!("I already match the token operator"),
+                }
+
+                self.match_token(Token::RightParen)?;
+            }
+            _ => {
+                return Err(Error::ParseError {
+                    expected: Token::Number,
+                    received: self.current.0.clone(),
+                })
+            }
         }
         Ok(())
     }
