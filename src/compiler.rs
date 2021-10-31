@@ -2,7 +2,7 @@ use logos::{Logos, Span, SpannedIter};
 use std::io::Write;
 use std::num::ParseFloatError;
 
-#[derive(Logos, PartialEq, Eq, Debug, Clone)]
+#[derive(Logos, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum Token {
     // this regex for number don't make much sense, but it is this way in my reference:
     // https://github.com/ColinEberhardt/chasm/blob/master/src/tokenizer.ts#L41
@@ -24,6 +24,21 @@ pub enum Token {
     #[regex(r"\s+", logos::skip)]
     Error,
 }
+impl Token {
+    /// Return a reference to a static value with the same variant that self
+    fn to_static(self) -> &'static Self {
+        match self {
+            Token::Number => &Token::Number,
+            Token::Print => &Token::Print,
+            Token::Operator => &Token::Operator,
+            Token::Identifier => &Token::Identifier,
+            Token::Assignment => &Token::Assignment,
+            Token::LeftParen => &Token::LeftParen,
+            Token::RightParen => &Token::RightParen,
+            Token::Error => &Token::Error,
+        }
+    }
+}
 
 use thiserror::Error;
 
@@ -32,7 +47,10 @@ use crate::wasm_macro::wasm;
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Unexpected token value, expected {expected:?}, received {received:?}")]
-    ParseError { expected: Token, received: Token },
+    UnexpectedToken {
+        expected: &'static [Token],
+        received: Token,
+    },
     #[error("Failed to parse float number ({0})")]
     ParseFloatError(ParseFloatError),
 }
@@ -66,8 +84,8 @@ impl<'s, 'b> Parser<'s, 'b> {
 
     fn match_token(&mut self, token: Token) -> Res {
         if self.current.0 != token {
-            Err(Error::ParseError {
-                expected: token,
+            Err(Error::UnexpectedToken {
+                expected: std::slice::from_ref(token.to_static()),
                 received: self.current.0.clone(),
             })
         } else {
@@ -87,8 +105,8 @@ impl<'s, 'b> Parser<'s, 'b> {
         match self.current.0 {
             Token::Print => self.print_statement()?,
             _ => {
-                return Err(Error::ParseError {
-                    expected: Token::Print,
+                return Err(Error::UnexpectedToken {
+                    expected: &[Token::Print],
                     received: self.current.0.clone(),
                 })
             }
@@ -141,8 +159,8 @@ impl<'s, 'b> Parser<'s, 'b> {
                 self.match_token(Token::RightParen)?;
             }
             _ => {
-                return Err(Error::ParseError {
-                    expected: Token::Number,
+                return Err(Error::UnexpectedToken {
+                    expected: &[Token::Number, Token::LeftParen],
                     received: self.current.0.clone(),
                 })
             }

@@ -20,6 +20,12 @@ test_output!(
     (print_expr3, "print ((3*2) - (21/7))", "3\n")
 );
 
+#[test]
+#[should_panic]
+fn print_print() {
+    check_output("print print", "").unwrap()
+}
+
 fn check_output(source: &str, expected: &str) -> anyhow::Result<()> {
     let binary = compile(source)?;
     let out = Arc::new(Mutex::new(String::new()));
