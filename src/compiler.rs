@@ -1,4 +1,5 @@
 use logos::{Logos, Span, SpannedIter};
+use std::collections::HashMap;
 use std::io::Write;
 use std::num::ParseFloatError;
 
@@ -10,6 +11,8 @@ pub enum Token {
     Number,
     #[token("print")]
     Print,
+    #[token("var")]
+    Var,
     #[regex(r"(\+|-|\*|/|==|<|>|&&|,)")]
     Operator,
     #[regex(r"[a-zA-Z]+")]
@@ -30,6 +33,7 @@ impl Token {
         match self {
             Token::Number => &Token::Number,
             Token::Print => &Token::Print,
+            Token::Var => &Token::Var,
             Token::Operator => &Token::Operator,
             Token::Identifier => &Token::Identifier,
             Token::Assignment => &Token::Assignment,
@@ -57,12 +61,15 @@ pub enum Error {
 
 type Res = Result<(), Error>;
 
+type LocalIdx = u32;
+
 /// Compile the source code to webassembly code.
 pub struct Parser<'source, 'bin> {
     source: &'source str,
     lexer: SpannedIter<'source, Token>,
     w: &'bin mut Vec<u8>,
     current: (Token, Span),
+    symbols: HashMap<String, LocalIdx>
 }
 impl<'s, 'b> Parser<'s, 'b> {
     pub fn parse(source: &'s str, w: &'b mut Vec<u8>) -> Result<(), Error> {
@@ -72,9 +79,26 @@ impl<'s, 'b> Parser<'s, 'b> {
             current: (Token::Error, 0..0),
             lexer,
             w,
+            symbols: HashMap::new(),
         };
         parser.eat_token();
+
+        // record the index of the vector
+        let start_index = parser.w.len();
+
         parser.statements()?;
+        
+        let locals_index = parser.w.len();
+
+        // write the vector of locals of the function
+        leb128::write::unsigned(parser.w, 1).unwrap();
+        leb128::write::unsigned(parser.w, parser.symbols.len() as u64).unwrap();
+        wasm!(parser.w, f32);
+
+        // move locals to the start
+        let len = parser.w.len();
+        parser.w[start_index..].rotate_right(len - locals_index);
+
         Ok(())
     }
 
@@ -94,6 +118,16 @@ impl<'s, 'b> Parser<'s, 'b> {
         }
     }
 
+    fn local_index_for_symbol(&mut self, symbol: &str) -> LocalIdx {
+        if let Some(idx) = self.symbols.get(symbol) {
+            *idx
+        } else {
+            let len = self.symbols.len() as u32;
+            self.symbols.insert(symbol.to_string(), len);
+            len
+        }
+    }
+
     fn statements(&mut self) -> Res {
         while self.current.0 != Token::Error {
             self.statement()?;
@@ -101,12 +135,15 @@ impl<'s, 'b> Parser<'s, 'b> {
         Ok(())
     }
 
+    // parse "<statement>*"
     fn statement(&mut self) -> Res {
         match self.current.0 {
             Token::Print => self.print_statement()?,
+            Token::Var => self.variable_declaration()?,
+            Token::Identifier => self.variable_assignment()?,
             _ => {
                 return Err(Error::UnexpectedToken {
-                    expected: &[Token::Print],
+                    expected: &[Token::Print, Token::Var],
                     received: self.current.0.clone(),
                 })
             }
@@ -114,6 +151,7 @@ impl<'s, 'b> Parser<'s, 'b> {
         Ok(())
     }
 
+    /// Parse "print <expression>"
     fn print_statement(&mut self) -> Res {
         self.match_token(Token::Print)?;
         self.expression()?;
@@ -121,6 +159,28 @@ impl<'s, 'b> Parser<'s, 'b> {
         Ok(())
     }
 
+    /// Parse "var <ident> = <expression>"
+    fn variable_declaration(&mut self) -> Res {
+        // the "var" keyword is purely aesthetic
+        self.match_token(Token::Var)?;
+
+        self.variable_assignment()
+    }
+
+    /// Parse "<ident> = <expression>"
+    fn variable_assignment(&mut self) -> Res {
+        let ident = self.current.clone();
+        self.match_token(Token::Identifier)?;
+        let idx = self.local_index_for_symbol(&self.source[ident.1]);
+
+        self.match_token(Token::Assignment)?;
+
+        self.expression()?;
+        wasm!(self.w, local.set idx);
+        Ok(())
+    }
+
+    /// Parse "<number>" or "<ident>" or "( <expression> <op> <expression> )"
     fn expression(&mut self) -> Res {
         match self.current.0 {
             Token::Number => {
@@ -130,6 +190,15 @@ impl<'s, 'b> Parser<'s, 'b> {
                 };
                 self.match_token(Token::Number)?;
                 wasm!(self.w, (f32.const number));
+            }
+            Token::Identifier => {
+                let ident = self.current.clone();
+                self.match_token(Token::Identifier)?;
+
+                let symbol = &self.source[ident.1];
+                let idx = self.local_index_for_symbol(symbol);
+
+                wasm!(self.w, local.get idx);
             }
             Token::LeftParen => {
                 self.match_token(Token::LeftParen)?;

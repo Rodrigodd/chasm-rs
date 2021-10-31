@@ -72,10 +72,15 @@ macro_rules! wasm {
         ($w).write(&[0x43]).unwrap();
         ($w).write(&($z).to_le_bytes()).unwrap();
     };
-    // get_local instruction
-    ($w:expr, get_local $e:literal) => {
+    // local.get instruction
+    ($w:expr, local.get $e:expr) => {
         ($w).write(&[0x20]).unwrap();
-        leb128::write::unsigned($w, $e).unwrap();
+        leb128::write::unsigned($w, ($e) as u64).unwrap();
+    };
+    // local.set instruction
+    ($w:expr, local.set $e:expr) => {
+        ($w).write(&[0x21]).unwrap();
+        leb128::write::unsigned($w, ($e) as u64).unwrap();
     };
     // i32.add instruction
     ($w:expr, i32.add) => {

@@ -12,11 +12,8 @@ mod test;
 
 /// Compile the given chasm source code in a wasm binary.
 pub fn compile(source: &str) -> anyhow::Result<Vec<u8>> {
-    let mut main_function = wasm! {new
-        // locals
-        (vec)
-    };
 
+    let mut main_function = Vec::new();
     // code
     compiler::Parser::parse(source, &mut main_function)?;
 
@@ -26,7 +23,7 @@ pub fn compile(source: &str) -> anyhow::Result<Vec<u8>> {
         (magic version)
         (section type (vec
             (functype (vec f32) (vec))
-            (functype (vec i32 i32) (vec))
+            (functype (vec) (vec))
         ))
         (section import (vec (import "env" "print" function 0x0)))
         (section function (vec 1))

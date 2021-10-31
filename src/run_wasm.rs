@@ -1,7 +1,7 @@
 use std::fmt::Write;
 use std::sync::{Arc, Mutex};
 
-use wasmer::{imports, Function, Instance, Module, Store, Value};
+use wasmer::{imports, Function, Instance, Module, Store};
 
 fn dump_hex(data: &[u8]) {
     let mut bytes = data;
@@ -64,6 +64,6 @@ pub fn run_binary<W: Write + Send + 'static>(binary: &[u8], out: Arc<Mutex<W>>) 
     };
     let instance = Instance::new(&module, &import_object)?;
     let main = instance.exports.get_function("main")?;
-    main.call(&[Value::I32(8), Value::I32(9)])?;
+    main.call(&[])?;
     Ok(())
 }

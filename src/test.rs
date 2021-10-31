@@ -18,6 +18,8 @@ test_output!(
     (mult_print, "print 12 print -8 print 44 print 0.1 print -1e-02", "12\n-8\n44\n0.1\n-0.01\n")
     (print_1p1, "print (1 + 1)", "2\n")
     (print_expr3, "print ((3*2) - (21/7))", "3\n")
+    (print_var_a, "var a = 12 print a", "12\n")
+    (print_var_b, "var b = (46*72) b = (b/46) print b", "72\n")
 );
 
 #[test]
