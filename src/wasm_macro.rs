@@ -86,6 +86,9 @@ macro_rules! wasm {
     ($w:expr, i32.add) => {
         { ($w).write(&[0x6a]).unwrap(); }
     };
+    ($w:expr, i32.eqz) => {
+        { ($w).write(&[0x45]).unwrap(); }
+    };
     ($w:expr, f32.add) => {
         { ($w).write(&[0x92]).unwrap(); }
     };
@@ -110,6 +113,31 @@ macro_rules! wasm {
     ($w:expr, i32.and) => {
         { ($w).write(&[0x71]).unwrap(); }
     };
+
+
+    ($w:expr, br $label:expr) => {
+        { 
+            ($w).write(&[0x0C]).unwrap();
+            leb128::write::unsigned($w, ($label) as u64).unwrap();
+        }
+    };
+    ($w:expr, br_if $label:expr) => {
+        { 
+            ($w).write(&[0x0D]).unwrap();
+            leb128::write::unsigned($w, ($label) as u64).unwrap();
+        }
+    };
+
+    // A block with a empty return type
+    ($w:expr, block) => {
+        ($w).write(&[0x02, 0x40]).unwrap();
+    };
+    // A loop with a empty return type
+    ($w:expr, loop) => {
+        ($w).write(&[0x03, 0x40]).unwrap();
+    };
+
+
     // creates a section
     // https://webassembly.github.io/spec/core/binary/modules.html#binary-section
     ($w:expr, section $id:tt $e:tt) => {

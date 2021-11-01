@@ -20,6 +20,17 @@ test_output!(
     (print_expr3, "print ((3*2) - (21/7))", "3\n")
     (print_var_a, "var a = 12 print a", "12\n")
     (print_var_b, "var b = (46*72) b = (b/46) print b", "72\n")
+    (fibonacci, "
+     var a = 0
+     var b = 1
+     var i = 0
+     while (i < 10)
+        print a
+        b = (a + b)
+        a = (b - a)
+        i = (i + 1)
+     endwhile",
+     "0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n")
 );
 
 #[test]

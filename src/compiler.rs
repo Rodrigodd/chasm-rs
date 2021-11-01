@@ -13,6 +13,10 @@ pub enum Token {
     Print,
     #[token("var")]
     Var,
+    #[token("while")]
+    While,
+    #[token("endwhile")]
+    EndWhile,
     #[regex(r"(\+|-|\*|/|==|<|>|&&|,)")]
     Operator,
     #[regex(r"[a-zA-Z]+")]
@@ -34,6 +38,8 @@ impl Token {
             Token::Number => &Token::Number,
             Token::Print => &Token::Print,
             Token::Var => &Token::Var,
+            Token::While => &Token::While,
+            Token::EndWhile => &Token::EndWhile,
             Token::Operator => &Token::Operator,
             Token::Identifier => &Token::Identifier,
             Token::Assignment => &Token::Assignment,
@@ -141,9 +147,10 @@ impl<'s, 'b> Parser<'s, 'b> {
             Token::Print => self.print_statement()?,
             Token::Var => self.variable_declaration()?,
             Token::Identifier => self.variable_assignment()?,
+            Token::While => self.while_statement()?,
             _ => {
                 return Err(Error::UnexpectedToken {
-                    expected: &[Token::Print, Token::Var],
+                    expected: &[Token::Print, Token::Var, Token::Identifier, Token::While],
                     received: self.current.0.clone(),
                 })
             }
@@ -177,6 +184,30 @@ impl<'s, 'b> Parser<'s, 'b> {
 
         self.expression()?;
         wasm!(self.w, local.set idx);
+        Ok(())
+    }
+
+    /// Parse "while <expression> <statements>* endwhile"
+    fn while_statement(&mut self) -> Res {
+        self.match_token(Token::While)?;
+
+        wasm!(self.w, block);
+        wasm!(self.w, loop);
+        
+        self.expression()?;
+
+        wasm!(self.w, i32.eqz);
+        wasm!(self.w, br_if 1);
+
+        while self.current.0 != Token::EndWhile {
+            self.statement()?;
+        }
+
+        self.match_token(Token::EndWhile)?;
+
+        wasm!(self.w, br 0);
+        wasm!(self.w, (end) (end));
+
         Ok(())
     }
 

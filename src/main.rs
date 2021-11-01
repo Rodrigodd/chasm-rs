@@ -22,8 +22,7 @@ pub fn compile(source: &str) -> anyhow::Result<Vec<u8>> {
         (magic version)
         (section type (vec
             (functype (vec f32) (vec))
-            (functype (vec) (vec))
-        ))
+            (functype (vec) (vec))))
         (section import (vec (import "env" "print" function 0x0)))
         (section function (vec 1))
         (section export (vec (export "main" function 0x1)))
