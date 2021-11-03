@@ -191,13 +191,13 @@ impl<'s, 'b> Parser<'s, 'b> {
     fn while_statement(&mut self) -> Res {
         self.match_token(Token::While)?;
 
-        wasm!(self.w, block);
-        wasm!(self.w, loop);
+        // start a block, and a loop block
+        wasm!(self.w, (block) (loop));
         
+        // if the expression is false, jump to the end of the block
         self.expression()?;
 
-        wasm!(self.w, i32.eqz);
-        wasm!(self.w, br_if 1);
+        wasm!(self.w, (i32.eqz) (br_if 1));
 
         while self.current.0 != Token::EndWhile {
             self.statement()?;
@@ -205,8 +205,8 @@ impl<'s, 'b> Parser<'s, 'b> {
 
         self.match_token(Token::EndWhile)?;
 
-        wasm!(self.w, br 0);
-        wasm!(self.w, (end) (end));
+        // jump to the start of the loop block
+        wasm!(self.w, (br 0) (end) (end));
 
         Ok(())
     }
