@@ -17,6 +17,10 @@ pub enum Token {
     While,
     #[token("endwhile")]
     EndWhile,
+    #[token("proc")]
+    Proc,
+    #[token("endproc")]
+    EndProc,
     #[regex(r"(\+|-|\*|/|==|<|>|&&|,)")]
     Operator,
     #[regex(r"[a-zA-Z]+")]
@@ -30,6 +34,7 @@ pub enum Token {
     #[error]
     #[regex(r"\s+", logos::skip)]
     Error,
+    EOF,
 }
 impl Token {
     /// Return a reference to a static value with the same variant that self
@@ -40,12 +45,15 @@ impl Token {
             Token::Var => &Token::Var,
             Token::While => &Token::While,
             Token::EndWhile => &Token::EndWhile,
+            Token::Proc => &Token::Proc,
+            Token::EndProc => &Token::EndProc,
             Token::Operator => &Token::Operator,
             Token::Identifier => &Token::Identifier,
             Token::Assignment => &Token::Assignment,
             Token::LeftParen => &Token::LeftParen,
             Token::RightParen => &Token::RightParen,
             Token::Error => &Token::Error,
+            Token::EOF => &Token::EOF,
         }
     }
 }
@@ -63,53 +71,102 @@ pub enum Error {
     },
     #[error("Failed to parse float number ({0})")]
     ParseFloatError(ParseFloatError),
+    #[error("Number of arguments mismatch, expected {expected:?}, received {received:?}")]
+    ArgumentNumberMismatch { expected: u32, received: u32 },
 }
 
-type Res = Result<(), Error>;
+type Res<T = ()> = Result<T, Error>;
 
 type LocalIdx = u32;
+type FuncIdx = u32;
+
+pub struct Procedure {
+    pub idx: FuncIdx,
+    pub num_param: u32,
+    pub code: Vec<u8>,
+}
+
+struct Context {
+    code: Vec<u8>,
+    symbols: HashMap<String, LocalIdx>,
+}
+impl Context {
+    fn local_index_for_symbol(&mut self, symbol: &str) -> LocalIdx {
+        if let Some(idx) = self.symbols.get(symbol) {
+            *idx
+        } else {
+            let len = self.symbols.len() as u32;
+            self.symbols.insert(symbol.to_string(), len);
+            len
+        }
+    }
+}
 
 /// Compile the source code to webassembly code.
-pub struct Parser<'source, 'bin> {
+pub struct Parser<'source> {
     source: &'source str,
     lexer: SpannedIter<'source, Token>,
-    w: &'bin mut Vec<u8>,
     current: (Token, Span),
-    symbols: HashMap<String, LocalIdx>
+    next: (Token, Span),
+    procedures: HashMap<String, Procedure>,
 }
-impl<'s, 'b> Parser<'s, 'b> {
-    pub fn parse(source: &'s str, w: &'b mut Vec<u8>) -> Result<(), Error> {
+impl<'s> Parser<'s> {
+    pub fn parse(source: &'s str) -> Result<Vec<Procedure>, Error> {
         let lexer = Token::lexer(source).spanned();
         let mut parser = Self {
             source,
             current: (Token::Error, 0..0),
+            next: (Token::Error, 0..0),
             lexer,
-            w,
-            symbols: HashMap::new(),
+            procedures: HashMap::new(),
         };
         parser.eat_token();
+        parser.eat_token();
 
-        // record the index of the vector
-        let start_index = parser.w.len();
+        let main_proc = Procedure {
+            idx: 1,
+            num_param: 0,
+            code: Vec::new(),
+        };
+        parser.procedures.insert("main".to_string(), main_proc);
 
-        parser.statements()?;
-        
-        let locals_index = parser.w.len();
+        let mut ctx = Context {
+            code: Vec::new(),
+            symbols: HashMap::new(),
+        };
+
+        // compile statements
+        let ref mut this = parser;
+        while this.current.0 != Token::EOF {
+            this.statement(&mut ctx)?;
+        }
+        parser.match_token(Token::EOF)?;
+        wasm!(&mut ctx.code, end);
+
+        let locals_index = ctx.code.len();
 
         // write the vector of locals of the function
-        leb128::write::unsigned(parser.w, 1).unwrap();
-        leb128::write::unsigned(parser.w, parser.symbols.len() as u64).unwrap();
-        wasm!(parser.w, f32);
+        leb128::write::unsigned(&mut ctx.code, 1).unwrap();
+        leb128::write::unsigned(&mut ctx.code, ctx.symbols.len() as u64).unwrap();
+        wasm!(&mut ctx.code, f32);
 
         // move locals to the start
-        let len = parser.w.len();
-        parser.w[start_index..].rotate_right(len - locals_index);
+        let len = ctx.code.len();
+        ctx.code.rotate_right(len - locals_index);
 
-        Ok(())
+        parser.procedures.get_mut("main").unwrap().code = ctx.code;
+
+        let mut procedures: Vec<_> = parser.procedures.into_values().collect();
+        procedures.sort_by_key(|x| x.idx);
+        Ok(procedures)
     }
 
     fn eat_token(&mut self) {
-        self.current = self.lexer.next().unwrap_or((Token::Error, 0..0));
+        self.current = self.next.clone();
+        self.next = self.lexer.next().unwrap_or_else(|| {
+            let end = self.source.len();
+            (Token::EOF, end..end)
+        });
     }
 
     fn match_token(&mut self, token: Token) -> Res {
@@ -124,30 +181,53 @@ impl<'s, 'b> Parser<'s, 'b> {
         }
     }
 
-    fn local_index_for_symbol(&mut self, symbol: &str) -> LocalIdx {
-        if let Some(idx) = self.symbols.get(symbol) {
-            *idx
-        } else {
-            let len = self.symbols.len() as u32;
-            self.symbols.insert(symbol.to_string(), len);
-            len
-        }
-    }
+    fn procedure_from_symbol<'a>(
+        &'a mut self,
+        symbol: &str,
+        num_param: u32,
+    ) -> Res<&'a mut Procedure> {
+        if let Some(_) = self.procedures.get_mut(symbol) {
+            // need to borrow twice, because of borrow checker
+            let proc = self.procedures.get_mut(symbol).unwrap();
 
-    fn statements(&mut self) -> Res {
-        while self.current.0 != Token::Error {
-            self.statement()?;
+            if proc.num_param != num_param {
+                return Err(Error::ArgumentNumberMismatch {
+                    expected: proc.num_param,
+                    received: num_param,
+                });
+            }
+
+            return Ok(proc);
+        } else {
+            let idx = (self.procedures.len() + 1) as FuncIdx;
+            let proc = Procedure {
+                idx,
+                num_param,
+                code: Vec::new(),
+            };
+            self.procedures.insert(symbol.to_string(), proc);
+            let proc = self.procedures.get_mut(symbol).unwrap();
+            Ok(proc)
         }
-        Ok(())
     }
 
     // parse "<statement>*"
-    fn statement(&mut self) -> Res {
+    fn statement(&mut self, ctx: &mut Context) -> Res {
         match self.current.0 {
-            Token::Print => self.print_statement()?,
-            Token::Var => self.variable_declaration()?,
-            Token::Identifier => self.variable_assignment()?,
-            Token::While => self.while_statement()?,
+            Token::Print => self.print_statement(ctx)?,
+            Token::Var => self.variable_declaration(ctx)?,
+            Token::Identifier => match self.next.0 {
+                Token::Assignment => self.variable_assignment(ctx)?,
+                Token::LeftParen => self.proc_call(ctx)?,
+                _ => {
+                    return Err(Error::UnexpectedToken {
+                        expected: &[Token::Assignment, Token::LeftParen],
+                        received: self.current.0.clone(),
+                    })
+                }
+            },
+            Token::While => self.while_statement(ctx)?,
+            Token::Proc => self.proc_statement()?,
             _ => {
                 return Err(Error::UnexpectedToken {
                     expected: &[Token::Print, Token::Var, Token::Identifier, Token::While],
@@ -159,60 +239,147 @@ impl<'s, 'b> Parser<'s, 'b> {
     }
 
     /// Parse "print <expression>"
-    fn print_statement(&mut self) -> Res {
+    fn print_statement(&mut self, ctx: &mut Context) -> Res {
         self.match_token(Token::Print)?;
-        self.expression()?;
-        wasm!(self.w, (call 0x0));
+        self.expression(ctx)?;
+        wasm!(&mut ctx.code, (call 0x0));
         Ok(())
     }
 
     /// Parse "var <ident> = <expression>"
-    fn variable_declaration(&mut self) -> Res {
+    fn variable_declaration(&mut self, ctx: &mut Context) -> Res {
         // the "var" keyword is purely aesthetic
         self.match_token(Token::Var)?;
 
-        self.variable_assignment()
+        self.variable_assignment(ctx)
     }
 
     /// Parse "<ident> = <expression>"
-    fn variable_assignment(&mut self) -> Res {
+    fn variable_assignment(&mut self, ctx: &mut Context) -> Res {
         let ident = self.current.clone();
         self.match_token(Token::Identifier)?;
-        let idx = self.local_index_for_symbol(&self.source[ident.1]);
+        let idx = ctx.local_index_for_symbol(&self.source[ident.1]);
 
         self.match_token(Token::Assignment)?;
 
-        self.expression()?;
-        wasm!(self.w, local.set idx);
+        self.expression(ctx)?;
+        wasm!(&mut ctx.code, local.set idx);
+        Ok(())
+    }
+
+    /// Parse "<ident> ( <args>,* )"
+    fn proc_call(&mut self, ctx: &mut Context) -> Res {
+        let symbol = self.current.clone();
+        self.match_token(Token::Identifier)?;
+
+        self.match_token(Token::LeftParen)?;
+
+        let mut n = 0;
+        while self.current.0 != Token::RightParen {
+            self.expression(ctx)?;
+            n += 1;
+            if self.current.0 != Token::RightParen {
+                self.match_token(Token::Operator)?;
+            } else {
+                break;
+            }
+        }
+        self.match_token(Token::RightParen)?;
+
+        let ident = &self.source[symbol.1];
+        let idx = self.procedure_from_symbol(ident, n)?.idx;
+
+        wasm!(&mut ctx.code, call idx);
         Ok(())
     }
 
     /// Parse "while <expression> <statements>* endwhile"
-    fn while_statement(&mut self) -> Res {
+    fn while_statement(&mut self, ctx: &mut Context) -> Res {
         self.match_token(Token::While)?;
 
         // start a block, and a loop block
-        wasm!(self.w, (block) (loop));
-        
-        // if the expression is false, jump to the end of the block
-        self.expression()?;
+        wasm!(&mut ctx.code, (block) (loop));
 
-        wasm!(self.w, (i32.eqz) (br_if 1));
+        // if the expression is false, jump to the end of the block
+        self.expression(ctx)?;
+        wasm!(&mut ctx.code, (i32.eqz) (br_if 1));
 
         while self.current.0 != Token::EndWhile {
-            self.statement()?;
+            self.statement(ctx)?;
         }
 
         self.match_token(Token::EndWhile)?;
 
         // jump to the start of the loop block
-        wasm!(self.w, (br 0) (end) (end));
+        wasm!(&mut ctx.code, (br 0) (end) (end));
+
+        Ok(())
+    }
+
+    /// Parse "proc <ident> ( <args>,* ) <statement>* endproc"
+    fn proc_statement(&mut self) -> Res {
+        self.match_token(Token::Proc)?;
+
+        let name = self.current.clone();
+        self.match_token(Token::Identifier)?;
+        let name = &self.source[name.1];
+
+        let mut args = Vec::new();
+
+        self.match_token(Token::LeftParen)?;
+        while self.current.0 != Token::RightParen {
+            let arg = self.current.clone();
+            self.match_token(Token::Identifier)?;
+
+            let arg = &self.source[arg.1];
+            args.push(arg.to_string());
+
+            if self.current.0 != Token::RightParen {
+                self.match_token(Token::Operator)?;
+            } else {
+                break;
+            }
+        }
+        self.match_token(Token::RightParen)?;
+
+        let num_param = args.len() as u32;
+        self.procedure_from_symbol(name, num_param)?;
+
+        let mut ctx = Context {
+            code: Vec::new(),
+            // function arguments are the starting locals index
+            symbols: args.into_iter().zip(0..).collect(),
+        };
+
+        while self.current.0 != Token::EndProc {
+            self.statement(&mut ctx)?;
+        }
+        self.match_token(Token::EndProc)?;
+        wasm!(&mut ctx.code, end);
+
+        let locals_index = ctx.code.len();
+
+        // write the vector of locals of the function
+        leb128::write::unsigned(&mut ctx.code, 1).unwrap();
+        leb128::write::unsigned(
+            &mut ctx.code,
+            // don't need to add locals for the argumentes
+            (ctx.symbols.len() - num_param as usize) as u64,
+        )
+        .unwrap();
+        wasm!(&mut ctx.code, f32);
+
+        // move locals to the start
+        let len = ctx.code.len();
+        ctx.code.rotate_right(len - locals_index);
+
+        self.procedure_from_symbol(name, num_param).unwrap().code = ctx.code;
 
         Ok(())
     }
 
     /// Parse "<number>" or "<ident>" or "( <expression> <op> <expression> )"
-    fn expression(&mut self) -> Res {
+    fn expression(&mut self, ctx: &mut Context) -> Res {
         match self.current.0 {
             Token::Number => {
                 let number = match self.source[self.current.1.clone()].parse::<f32>() {
@@ -220,39 +387,39 @@ impl<'s, 'b> Parser<'s, 'b> {
                     Err(err) => return Err(Error::ParseFloatError(err)),
                 };
                 self.match_token(Token::Number)?;
-                wasm!(self.w, (f32.const number));
+                wasm!(&mut ctx.code, (f32.const number));
             }
             Token::Identifier => {
                 let ident = self.current.clone();
                 self.match_token(Token::Identifier)?;
 
                 let symbol = &self.source[ident.1];
-                let idx = self.local_index_for_symbol(symbol);
+                let idx = ctx.local_index_for_symbol(symbol);
 
-                wasm!(self.w, local.get idx);
+                wasm!(&mut ctx.code, local.get idx);
             }
             Token::LeftParen => {
                 self.match_token(Token::LeftParen)?;
 
                 // left
-                self.expression()?;
+                self.expression(ctx)?;
 
                 let op = self.current.clone();
                 self.match_token(Token::Operator)?;
 
                 // right
-                self.expression()?;
+                self.expression(ctx)?;
 
                 // op
                 match &self.source[op.1] {
-                    "+" => wasm!(self.w, f32.add),
-                    "-" => wasm!(self.w, f32.sub),
-                    "*" => wasm!(self.w, f32.mul),
-                    "/" => wasm!(self.w, f32.div),
-                    "==" => wasm!(self.w, f32.eq),
-                    "<" => wasm!(self.w, f32.lt),
-                    ">" => wasm!(self.w, f32.gt),
-                    "&&" => wasm!(self.w, i32.and),
+                    "+" => wasm!(&mut ctx.code, f32.add),
+                    "-" => wasm!(&mut ctx.code, f32.sub),
+                    "*" => wasm!(&mut ctx.code, f32.mul),
+                    "/" => wasm!(&mut ctx.code, f32.div),
+                    "==" => wasm!(&mut ctx.code, f32.eq),
+                    "<" => wasm!(&mut ctx.code, f32.lt),
+                    ">" => wasm!(&mut ctx.code, f32.gt),
+                    "&&" => wasm!(&mut ctx.code, i32.and),
                     _ => unreachable!("I already match the token operator"),
                 }
 

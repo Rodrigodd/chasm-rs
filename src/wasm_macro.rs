@@ -1,7 +1,7 @@
 /// A macro for writing webassembly in binary format.
 macro_rules! wasm {
     // create a new Vector<u8>
-    (new  $($e:tt)*) => {
+    (new $($e:tt)*) => {
         {
             let mut vec = Vec::new();
             wasm!(&mut vec, $($e)*);
@@ -65,7 +65,7 @@ macro_rules! wasm {
     // call instruction
     ($w:expr, call $funcidx:expr) => {
         ($w).write(&[0x10]).unwrap();
-        leb128::write::unsigned($w, $funcidx).unwrap();
+        leb128::write::unsigned($w, ($funcidx) as u64).unwrap();
     };
     // f32.const instruction
     ($w:expr, f32.const $z:expr) => {
@@ -116,13 +116,13 @@ macro_rules! wasm {
 
 
     ($w:expr, br $label:expr) => {
-        { 
+        {
             ($w).write(&[0x0C]).unwrap();
             leb128::write::unsigned($w, ($label) as u64).unwrap();
         }
     };
     ($w:expr, br_if $label:expr) => {
-        { 
+        {
             ($w).write(&[0x0D]).unwrap();
             leb128::write::unsigned($w, ($label) as u64).unwrap();
         }

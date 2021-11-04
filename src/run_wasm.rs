@@ -38,7 +38,10 @@ fn dump_hex(data: &[u8]) {
 }
 use wasmer::WasmerEnv;
 
-pub fn run_binary<W: Write + Send + 'static>(binary: &[u8], out: Arc<Mutex<W>>) -> anyhow::Result<()> {
+pub fn run_binary<W: Write + Send + 'static>(
+    binary: &[u8],
+    out: Arc<Mutex<W>>,
+) -> anyhow::Result<()> {
     dump_hex(&binary);
 
     struct Writer<W: Send> {
@@ -51,9 +54,7 @@ pub fn run_binary<W: Write + Send + 'static>(binary: &[u8], out: Arc<Mutex<W>>) 
         }
     }
 
-    let writer = Writer {
-        w: out,
-    };
+    let writer = Writer { w: out };
 
     let store = Store::default();
     let module = Module::new(&store, &binary)?;
