@@ -12,18 +12,16 @@ macro_rules! test_output {
     };
 }
 
+#[rustfmt::skip]
 test_output!(
-    (print_12, "print 12", "12\n")(print_n8, "print -8", "-8\n")(
-        mult_print,
-        "print 12 print -8 print 44 print 0.1 print -1e-02",
-        "12\n-8\n44\n0.1\n-0.01\n"
-    )(print_1p1, "print (1 + 1)", "2\n")(print_expr3, "print ((3*2) - (21/7))", "3\n")(
-        print_var_a,
-        "var a = 12 print a",
-        "12\n"
-    )(print_var_b, "var b = (46*72) b = (b/46) print b", "72\n")(
-        fibonacci,
-        "
+    (print_12, "print 12", "12\n")
+    (print_n8, "print -8", "-8\n")
+    (mult_print, "print 12 print -8 print 44 print 0.1 print -1e-02", "12\n-8\n44\n0.1\n-0.01\n")
+    (print_1p1, "print (1 + 1)", "2\n")
+    (print_expr3, "print ((3*2) - (21/7))", "3\n")
+    (print_var_a, "var a = 12 print a", "12\n")
+    (print_var_b, "var b = (46*72) b = (b/46) print b", "72\n")
+    (fibonacci, "
      var a = 0
      var b = 1
      var i = 0
@@ -33,31 +31,21 @@ test_output!(
         a = (b - a)
         i = (i + 1)
      endwhile",
-        "0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n"
-    )(proc_call, "proc a(x) print x endproc a(10)", "10\n")(
-        proc_call3,
-        "proc func(a,b,c) print (a+(b+c)) endproc func(5,2,7)",
-        "14\n"
-    )(
-        proc_call_local,
-        "proc func(a,b,c) x = 14 print ((a+(b+c))/x) endproc a = 5 m = 2 n = 7 func(a,m,n)",
-        "1\n"
-    )(
-        recur_call,
-        "
+     "0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n")
+    (proc_call, "proc a(x) print x endproc a(10)", "10\n")
+    (proc_call3, "proc func(a,b,c) print (a+(b+c)) endproc func(5,2,7)", "14\n")
+    (proc_call_local, "proc func(a,b,c) x = 14 print ((a+(b+c))/x) endproc a = 5 m = 2 n = 7 func(a,m,n)", "1\n")
+    (recur_call, "
      proc A () B() endproc
      proc B () print 5 endproc
      A()",
-        "5\n"
-    )(
-        recur_call3,
-        "
+     "5\n")
+    (recur_call3, "
      proc A (x) B(x, 2) endproc
      proc B (x, y) C(x, y, 4) endproc
      proc C (x, y, z) print ((x+y)+z) endproc
      A(1)",
-        "7\n"
-    )
+     "7\n")
 );
 
 #[test]
