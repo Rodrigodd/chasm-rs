@@ -12,6 +12,14 @@ macro_rules! test_output {
     };
 }
 
+fn check_output(source: &str, expected: &str) -> anyhow::Result<()> {
+    let binary = compile(source)?;
+    let out = Arc::new(Mutex::new(String::new()));
+    run_wasm::run_binary(&binary, out.clone())?;
+    assert_eq!(*out.lock().unwrap(), expected);
+    Ok(())
+}
+
 #[rustfmt::skip]
 test_output!(
     (print_12, "print 12", "12\n")
@@ -50,6 +58,7 @@ test_output!(
      proc C (x, y, z) print ((x+y)+z) endproc
      A(1)",
      "7\n")
+    (setpixel_side_effect, "print 0 setpixel(0, 1, 2) print x print y print color", "0\n0\n1\n2\n")
 );
 
 #[test]
@@ -57,11 +66,43 @@ test_output!(
 fn print_print() {
     check_output("print print", "").unwrap()
 }
+#[test]
+fn mandelbrot() -> anyhow::Result<()> {
+    let source = "
+var y  = 0
+while (y < 100)
+  y = (y + 1)
+  var x  = 0
+  while (x < 100)
+    x = (x + 1)
 
-fn check_output(source: &str, expected: &str) -> anyhow::Result<()> {
+    var e = ((y / 50) - 1.5)
+    var f = ((x / 50) - 1)
+
+    var a = 0
+    var b = 0
+    var i = 0
+    var j = 0
+    var c = 0
+
+    while ((((i * i) + (j * j)) < 4) && (c < 255))
+      i = (((a * a) - (b * b)) + e)
+      j = (((2 * a) * b) + f)
+      a = i
+      b = j
+      c = (c + 1)
+    endwhile
+    setpixel (x, y, c)
+  endwhile
+endwhile";
     let binary = compile(source)?;
     let out = Arc::new(Mutex::new(String::new()));
-    run_wasm::run_binary(&binary, out.clone())?;
-    assert_eq!(*out.lock().unwrap(), expected);
+    let output = run_wasm::run_binary(&binary, out.clone())?;
+    crate::print_ascii_art(&output);
+
+    let hash = blake3::hash(&output);
+    assert_eq!(&hash.to_hex()[0..16], "4e43b4aae8c0365b");
+
     Ok(())
 }
+

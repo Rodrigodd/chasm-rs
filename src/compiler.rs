@@ -281,25 +281,66 @@ impl<'s> Parser<'s> {
     fn proc_call(&mut self, ctx: &mut Context) -> Res {
         let symbol = self.current.clone();
         self.match_token(Token::Identifier)?;
-
-        self.match_token(Token::LeftParen)?;
-
-        let mut n = 0;
-        while self.current.0 != Token::RightParen {
-            self.expression(ctx)?;
-            n += 1;
-            if self.current.0 != Token::RightParen {
-                self.match_token(Token::Operator)?;
-            } else {
-                break;
-            }
-        }
-        self.match_token(Token::RightParen)?;
-
         let ident = &self.source[symbol.1];
-        let idx = self.procedure_from_symbol(ident, n)?.idx;
 
-        wasm!(&mut ctx.code, call idx);
+        // setpixel calls are hardcoded in the compiler
+        if ident == "setpixel" {
+            self.match_token(Token::LeftParen)?;
+
+            // yes, setpixel calls cause side effects in variables
+
+            self.expression(ctx)?;
+            let x_idx = ctx.local_index_for_symbol("x");
+            wasm!(&mut ctx.code, local.set x_idx);
+
+            self.match_token(Token::Operator)?;
+
+            self.expression(ctx)?;
+            let y_idx = ctx.local_index_for_symbol("y");
+            wasm!(&mut ctx.code, local.set y_idx);
+
+            self.match_token(Token::Operator)?;
+
+            self.expression(ctx)?;
+            let color_idx = ctx.local_index_for_symbol("color");
+            wasm!(&mut ctx.code, local.set color_idx);
+
+            wasm!(&mut ctx.code,
+                // compute ((y*100) + x)
+                (local.get y_idx)
+                (f32.const 100.0)
+                (f32.mul)
+                (local.get x_idx)
+                (f32.add)
+                // convert to integer
+                (i32.trunc_f32_s)
+                // fetch color
+                (local.get color_idx)
+                (i32.trunc_f32_s)
+                // write to memory
+                (i32.store8 0 0)
+            );
+            
+            self.match_token(Token::RightParen)?;
+        } else {
+            self.match_token(Token::LeftParen)?;
+
+            let mut n = 0;
+            while self.current.0 != Token::RightParen {
+                self.expression(ctx)?;
+                n += 1;
+                if self.current.0 != Token::RightParen {
+                    self.match_token(Token::Operator)?;
+                } else {
+                    break;
+                }
+            }
+            self.match_token(Token::RightParen)?;
+
+            let idx = self.procedure_from_symbol(ident, n)?.idx;
+
+            wasm!(&mut ctx.code, call idx);
+        }
         Ok(())
     }
 

@@ -70,7 +70,7 @@ macro_rules! wasm {
     // f32.const instruction
     ($w:expr, f32.const $z:expr) => {
         ($w).write(&[0x43]).unwrap();
-        ($w).write(&($z).to_le_bytes()).unwrap();
+        ($w).write(&(($z) as f32).to_le_bytes()).unwrap();
     };
     // local.get instruction
     ($w:expr, local.get $e:expr) => {
@@ -88,6 +88,16 @@ macro_rules! wasm {
     };
     ($w:expr, i32.eqz) => {
         { ($w).write(&[0x45]).unwrap(); }
+    };
+    ($w:expr, i32.store8 $aling:literal $offset:literal) => {
+        { 
+            ($w).write(&[0x3a]).unwrap(); 
+            leb128::write::unsigned($w, ($aling) as u64).unwrap();
+            leb128::write::unsigned($w, ($offset) as u64).unwrap();
+        }
+    };
+    ($w:expr, i32.trunc_f32_s) => {
+        { ($w).write(&[0xa8]).unwrap(); }
     };
     ($w:expr, f32.add) => {
         { ($w).write(&[0x92]).unwrap(); }
@@ -177,7 +187,7 @@ macro_rules! wasm {
 
     // creates a import, in used in the import section
     // https://webassembly.github.io/spec/core/binary/modules.html#binary-import
-    ($w:expr, import $mod:literal $name:literal $id:tt $idx:tt) => {
+    ($w:expr, import $mod:literal $name:literal $desc:tt) => {
         {
             let module = ($mod).as_bytes();
             leb128::write::unsigned($w, module.len() as u64).unwrap();
@@ -188,8 +198,26 @@ macro_rules! wasm {
             leb128::write::unsigned($w, name.len() as u64).unwrap();
             ($w).write(name).unwrap();
         }
-        ($w).write(&[wasm!(export_type $id)]).unwrap();
+        wasm!($w, import_desc $desc)
+    };
+    // import description of a function
+    // https://webassembly.github.io/spec/core/binary/modules.html#binary-importdesc
+    ($w:expr, import_desc (function $idx:expr)) => {
+        ($w).write(&[0x00]).unwrap();
         leb128::write::unsigned($w, $idx as u64).unwrap();
+    };
+    // import description of a memory
+    // https://webassembly.github.io/spec/core/binary/modules.html#binary-importdesc
+    ($w:expr, import_desc (memory $min:literal $max:literal)) => {
+        ($w).write(&[0x02]).unwrap();
+        ($w).write(&[0x01]).unwrap();
+        leb128::write::unsigned($w, $min as u64).unwrap();
+        leb128::write::unsigned($w, $max as u64).unwrap();
+    };
+    ($w:expr, import_desc (memory $min:literal)) => {
+        ($w).write(&[0x02]).unwrap();
+        ($w).write(&[0x00]).unwrap();
+        leb128::write::unsigned($w, $min as u64).unwrap();
     };
 
     (section_type type) => { 1 };
@@ -197,7 +225,7 @@ macro_rules! wasm {
     (section_type function) => { 3 };
     (section_type export) => { 7 };
     (section_type code) => { 10 };
-
+    
     (export_type function) => { 0x00 };
     (export_type table) => { 0x01 };
     (export_type memory) => { 0x02 };

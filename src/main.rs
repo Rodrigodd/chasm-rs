@@ -50,7 +50,11 @@ pub fn compile(source: &str) -> anyhow::Result<Vec<u8>> {
         }
     });
 
-    wasm!(&mut binary, (section import (vec (import "env" "print" function 0x0))));
+    wasm!(&mut binary, 
+        (section import (vec
+            (import "env" "print" (function 0x0))
+            (import "env" "memory" (memory 1))))
+    );
 
     // (section function (vec 1))
     write_section(&mut binary, wasm!(section_type function), |mut w| {
@@ -78,18 +82,43 @@ pub fn compile(source: &str) -> anyhow::Result<Vec<u8>> {
     Ok(binary)
 }
 
-fn main() -> anyhow::Result<()> {
-    pub struct ToWriteFmt<T>(pub T);
+pub struct ToWriteFmt<T>(pub T);
+impl<T> std::fmt::Write for ToWriteFmt<T>
+where
+T: std::io::Write,
+{
+    fn write_str(&mut self, s: &str) -> std::fmt::Result {
+        self.0.write_all(s.as_bytes()).map_err(|_| std::fmt::Error)
+    }
+}
 
-    impl<T> std::fmt::Write for ToWriteFmt<T>
-    where
-        T: std::io::Write,
-    {
-        fn write_str(&mut self, s: &str) -> std::fmt::Result {
-            self.0.write_all(s.as_bytes()).map_err(|_| std::fmt::Error)
+fn print_ascii_art(art: &[u8]) {
+    for y in 0..100 {
+        for x in 0..100 {
+            let b = art[y*100 + x];
+            let c = [' ', '-', '=', '#'][(b / 64) as usize];
+            print!("{}", c);
         }
+        println!();
+    }
+}
+
+fn main() -> anyhow::Result<()> {
+    let args: Vec<_> = std::env::args().collect();
+    if args.len() > 1 {
+        let code = std::fs::read_to_string(&args[1])?;
+        let binary = compile(&code)?;
+        let out = Arc::new(Mutex::new(ToWriteFmt(std::io::stdout())));
+        let art = run_wasm::run_binary(&binary, out)?;
+        print_ascii_art(&art);
+
+        return Ok(());
     }
 
+    repl()
+}
+
+fn repl() -> anyhow::Result<()> {
     let mut line = String::new();
     loop {
         let mut stdout = std::io::stdout();
@@ -105,6 +134,8 @@ fn main() -> anyhow::Result<()> {
                 continue;
             }
         };
-        run_wasm::run_binary(&binary, Arc::new(Mutex::new(ToWriteFmt(std::io::stdout()))))?;
+        let out = Arc::new(Mutex::new(ToWriteFmt(std::io::stdout())));
+        run_wasm::run_binary(&binary, out)?;
+
     }
 }

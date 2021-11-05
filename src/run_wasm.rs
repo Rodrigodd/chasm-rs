@@ -1,9 +1,9 @@
 use std::fmt::Write;
 use std::sync::{Arc, Mutex};
 
-use wasmer::{imports, Function, Instance, Module, Store};
+use wasmer::{Function, Instance, Memory, MemoryType, Module, Store, imports};
 
-fn dump_hex(data: &[u8]) {
+pub fn dump_hex(data: &[u8]) {
     let mut bytes = data;
     let mut offset = 0;
     loop {
@@ -41,7 +41,7 @@ use wasmer::WasmerEnv;
 pub fn run_binary<W: Write + Send + 'static>(
     binary: &[u8],
     out: Arc<Mutex<W>>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<u8>> {
     dump_hex(&binary);
 
     struct Writer<W: Send> {
@@ -58,13 +58,16 @@ pub fn run_binary<W: Write + Send + 'static>(
 
     let store = Store::default();
     let module = Module::new(&store, &binary)?;
+    let memory = Memory::new(&store, MemoryType::new(1, None, false)).unwrap();
     let import_object = imports! {
         "env" => {
-            "print" => Function::new_native_with_env(&store, writer, |out: &Writer<W>, x: f32| writeln!(&mut *out.w.lock().unwrap(), "{}", x))
+            "print" => Function::new_native_with_env(&store, writer, |out: &Writer<W>, x: f32| writeln!(&mut *out.w.lock().unwrap(), "{}", x)),
+            "memory" => memory.clone(),
         }
     };
     let instance = Instance::new(&module, &import_object)?;
     let main = instance.exports.get_function("main")?;
     main.call(&[])?;
-    Ok(())
+    let data = unsafe { memory.data_unchecked() }.to_owned();
+    Ok(data)
 }
