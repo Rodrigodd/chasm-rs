@@ -110,12 +110,45 @@ fn main() -> anyhow::Result<()> {
         let binary = compile(&code)?;
         let out = Arc::new(Mutex::new(ToWriteFmt(std::io::stdout())));
         let art = run_wasm::run_binary(&binary, out)?;
-        print_ascii_art(&art);
+
+        if args.len() > 2 {
+            print_ascii_art(&art);
+        } else {
+            screen(&art)?;
+        }
 
         return Ok(());
     }
 
     repl()
+}
+
+fn screen(art: &[u8]) -> anyhow::Result<()> {
+    use minifb::{Window, Key, WindowOptions};
+    const SCALE: usize = 3;
+    const WIDTH: usize = 100*SCALE;
+    const HEIGHT: usize = 100*SCALE;
+    let mut window = Window::new("chasm", WIDTH, HEIGHT, WindowOptions::default())?;
+    window.limit_update_rate(Some(std::time::Duration::from_micros(16666)));
+
+    let mut buffer = vec![0; WIDTH*HEIGHT];
+    for (i, &b) in art.iter().enumerate() {
+        let x = SCALE*(i % 100);
+        let y = SCALE*(i / 100);
+        let c = u32::from_be_bytes([0, b,b,b]);
+        for y in y..y+SCALE {
+            for x in x..x+SCALE {
+                buffer[x + WIDTH*y] = c;
+            }
+        }
+    }
+    window.update_with_buffer(&buffer, WIDTH, HEIGHT)?;
+
+    while window.is_open() && !window.is_key_down(Key::Escape) {
+        window.update();
+    }
+
+    Ok(())
 }
 
 fn repl() -> anyhow::Result<()> {

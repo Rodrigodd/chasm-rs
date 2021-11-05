@@ -68,6 +68,7 @@ pub fn run_binary<W: Write + Send + 'static>(
     let instance = Instance::new(&module, &import_object)?;
     let main = instance.exports.get_function("main")?;
     main.call(&[])?;
-    let data = unsafe { memory.data_unchecked() }.to_owned();
+    let mut data = unsafe { memory.data_unchecked() }.to_owned();
+    data.resize(100*100, 0);
     Ok(data)
 }

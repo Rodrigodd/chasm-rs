@@ -101,7 +101,7 @@ endwhile";
     crate::print_ascii_art(&output);
 
     let hash = blake3::hash(&output);
-    assert_eq!(&hash.to_hex()[0..16], "4e43b4aae8c0365b");
+    assert_eq!(&hash.to_hex()[0..16], "28ad088dd153090f");
 
     Ok(())
 }
