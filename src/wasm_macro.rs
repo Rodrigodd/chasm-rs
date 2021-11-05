@@ -132,6 +132,14 @@ macro_rules! wasm {
     ($w:expr, block) => {
         ($w).write(&[0x02, 0x40]).unwrap();
     };
+    // A if block with a empty return type
+    ($w:expr, if) => {
+        ($w).write(&[0x04, 0x40]).unwrap();
+    };
+    // A else block
+    ($w:expr, else) => {
+        ($w).write(&[0x05]).unwrap();
+    };
     // A loop with a empty return type
     ($w:expr, loop) => {
         ($w).write(&[0x03, 0x40]).unwrap();

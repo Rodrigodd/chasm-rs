@@ -32,6 +32,10 @@ test_output!(
         i = (i + 1)
      endwhile",
      "0\n1\n1\n2\n3\n5\n8\n13\n21\n34\n")
+    (if_block, "if (1==1) print 1 endif print 2", "1\n2\n")
+    (if_block_no, "if (1==2) print 1 endif print 2", "2\n")
+    (if_else_block, "if (1==1) print 1 else print 3 endif print 2", "1\n2\n")
+    (if_else_block_no, "if (1==2) print 1 else print 3 endif print 2", "3\n2\n")
     (proc_call, "proc a(x) print x endproc a(10)", "10\n")
     (proc_call3, "proc func(a,b,c) print (a+(b+c)) endproc func(5,2,7)", "14\n")
     (proc_call_local, "proc func(a,b,c) x = 14 print ((a+(b+c))/x) endproc a = 5 m = 2 n = 7 func(a,m,n)", "1\n")

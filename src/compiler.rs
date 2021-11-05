@@ -17,6 +17,12 @@ pub enum Token {
     While,
     #[token("endwhile")]
     EndWhile,
+    #[token("if")]
+    If,
+    #[token("endif")]
+    EndIf,
+    #[token("else")]
+    Else,
     #[token("proc")]
     Proc,
     #[token("endproc")]
@@ -45,6 +51,9 @@ impl Token {
             Token::Var => &Token::Var,
             Token::While => &Token::While,
             Token::EndWhile => &Token::EndWhile,
+            Token::If => &Token::If,
+            Token::EndIf => &Token::EndIf,
+            Token::Else => &Token::Else,
             Token::Proc => &Token::Proc,
             Token::EndProc => &Token::EndProc,
             Token::Operator => &Token::Operator,
@@ -227,6 +236,7 @@ impl<'s> Parser<'s> {
                 }
             },
             Token::While => self.while_statement(ctx)?,
+            Token::If => self.if_statement(ctx)?,
             Token::Proc => self.proc_statement()?,
             _ => {
                 return Err(Error::UnexpectedToken {
@@ -312,6 +322,33 @@ impl<'s> Parser<'s> {
 
         // jump to the start of the loop block
         wasm!(&mut ctx.code, (br 0) (end) (end));
+
+        Ok(())
+    }
+
+    /// Parse "if <expresion> <expression>* endif" or "if <expression> <expression>* else
+    /// <expression>* endif"
+    fn if_statement(&mut self, ctx: &mut Context) -> Res {
+        self.match_token(Token::If)?;
+
+        // condition
+        self.expression(ctx)?;
+
+        wasm!(&mut ctx.code, if);
+
+        while !(self.current.0 == Token::EndIf || self.current.0 == Token::Else) {
+            self.statement(ctx)?;
+        }
+        if self.current.0 == Token::Else {
+            self.match_token(Token::Else)?;
+            wasm!(&mut ctx.code, else);
+            while self.current.0 != Token::EndIf {
+                self.statement(ctx)?;
+            }
+        }
+
+        self.match_token(Token::EndIf)?;
+        wasm!(&mut ctx.code, end);
 
         Ok(())
     }
