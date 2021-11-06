@@ -1,4 +1,5 @@
 use super::*;
+use std::sync::{Arc, Mutex};
 
 macro_rules! test_output {
 	($name:ident, $source:expr, $output:expr) => {
@@ -98,7 +99,6 @@ endwhile";
     let binary = compile(source)?;
     let out = Arc::new(Mutex::new(String::new()));
     let output = run_wasm::run_binary(&binary, out.clone())?;
-    crate::print_ascii_art(&output);
 
     let hash = blake3::hash(&output);
     assert_eq!(&hash.to_hex()[0..16], "28ad088dd153090f");

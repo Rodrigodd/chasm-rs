@@ -1,20 +1,4 @@
-[package]
-name = "chasm-rs"
-version = "0.1.0"
-edition = "2018"
+[workspace]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+members = ["chasm-rs", "cli"]
 
-[dependencies]
-
-wasmer = "2"
-anyhow = "1"
-wat = "1"
-leb128 = "0.2"
-logos = "0.12"
-thiserror = "1"
-minifb = "0.19"
-
-[dev-dependencies]
-
-blake3 = "1"
