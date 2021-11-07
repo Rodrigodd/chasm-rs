@@ -2,8 +2,8 @@ use super::*;
 use core::panic;
 use std::sync::{Arc, Mutex};
 
+use crate::compiler::{Token, Type};
 use crate::Error;
-use crate::compiler::Token;
 
 macro_rules! test_output {
 	($name:ident, $source:expr, $output:expr) => {
@@ -21,12 +21,12 @@ fn check_output(source: &str, expected: Result<&str, Error>) {
     let binary = compile(source);
     match (expected, binary) {
         (Err(expected), Err(binary)) => assert_eq!(expected, binary),
-        (Ok(expected), Ok(binary))  => {
+        (Ok(expected), Ok(binary)) => {
             let out = Arc::new(Mutex::new(String::new()));
             run_wasm::run_binary(&binary, out.clone()).unwrap();
             assert_eq!(*out.lock().unwrap(), expected);
         }
-        (expected, binary) => panic!("expected {:?}, received {:?}", expected, binary)
+        (expected, binary) => panic!("expected {:?}, received {:?}", expected, binary),
     }
 }
 
@@ -76,6 +76,16 @@ test_output!(
             expected: &[Token::Number, Token::LeftParen]
         })
     )
+    (while_float, "while 0.0 print 1 endwhile",
+        Err(Error::UnexpectedType { expected: &[Type::I32], received: vec![Type::F32] }))
+    (if_float, "if 0.0 print 1 endif",
+        Err(Error::UnexpectedType { expected: &[Type::I32], received: vec![Type::F32] }))
+    (equal_bool, "print ((0.0 == 0.0) == (1.0 == 1.0))",
+        Err(Error::UnexpectedType { expected: &[Type::F32, Type::F32], received: vec![Type::I32, Type::I32] }))
+    (divide_bool, "print ((0.0 == 0.0) / (1.0 == 1.0))",
+        Err(Error::UnexpectedType { expected: &[Type::F32, Type::F32], received: vec![Type::I32, Type::I32] }))
+    (and_float, "print (0.0 && 0.0)",
+        Err(Error::UnexpectedType { expected: &[Type::I32, Type::I32], received: vec![Type::F32, Type::F32] }))
 );
 
 #[test]
@@ -116,4 +126,3 @@ endwhile";
 
     Ok(())
 }
-

@@ -82,12 +82,38 @@ pub enum Error {
     ParseFloatError(ParseFloatError),
     #[error("Number of arguments mismatch, expected {expected:?}, received {received:?}")]
     ArgumentNumberMismatch { expected: u32, received: u32 },
+    #[error("Unexpected number type, expected {expected:?}, received {received:?}")]
+    UnexpectedType {
+        expected: &'static [Type],
+        received: Vec<Type>,
+    },
 }
 
 type Res<T = ()> = Result<T, Error>;
 
 type LocalIdx = u32;
 type FuncIdx = u32;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Type {
+    I32,
+    F32,
+}
+impl Type {
+    fn expect_type(self, other: Self) -> Res {
+        if self != other {
+            Err(Error::UnexpectedType {
+                expected: std::slice::from_ref(match other {
+                    Self::I32 => &Self::I32,
+                    Self::F32 => &Self::F32,
+                }),
+                received: vec![self],
+            })
+        } else {
+            Ok(())
+        }
+    }
+}
 
 pub struct Procedure {
     pub idx: FuncIdx,
@@ -251,7 +277,7 @@ impl<'s> Parser<'s> {
     /// Parse "print <expression>"
     fn print_statement(&mut self, ctx: &mut Context) -> Res {
         self.match_token(Token::Print)?;
-        self.expression(ctx)?;
+        self.expression(ctx)?.expect_type(Type::F32)?;
         wasm!(&mut ctx.code, (call 0x0));
         Ok(())
     }
@@ -272,7 +298,7 @@ impl<'s> Parser<'s> {
 
         self.match_token(Token::Assignment)?;
 
-        self.expression(ctx)?;
+        self.expression(ctx)?.expect_type(Type::F32)?;
         wasm!(&mut ctx.code, local.set idx);
         Ok(())
     }
@@ -289,19 +315,19 @@ impl<'s> Parser<'s> {
 
             // yes, setpixel calls cause side effects in variables
 
-            self.expression(ctx)?;
+            self.expression(ctx)?.expect_type(Type::F32)?;
             let x_idx = ctx.local_index_for_symbol("x");
             wasm!(&mut ctx.code, local.set x_idx);
 
             self.match_token(Token::Operator)?;
 
-            self.expression(ctx)?;
+            self.expression(ctx)?.expect_type(Type::F32)?;
             let y_idx = ctx.local_index_for_symbol("y");
             wasm!(&mut ctx.code, local.set y_idx);
 
             self.match_token(Token::Operator)?;
 
-            self.expression(ctx)?;
+            self.expression(ctx)?.expect_type(Type::F32)?;
             let color_idx = ctx.local_index_for_symbol("color");
             wasm!(&mut ctx.code, local.set color_idx);
 
@@ -320,14 +346,14 @@ impl<'s> Parser<'s> {
                 // write to memory
                 (i32.store8 0 0)
             );
-            
+
             self.match_token(Token::RightParen)?;
         } else {
             self.match_token(Token::LeftParen)?;
 
             let mut n = 0;
             while self.current.0 != Token::RightParen {
-                self.expression(ctx)?;
+                self.expression(ctx)?.expect_type(Type::F32)?;
                 n += 1;
                 if self.current.0 != Token::RightParen {
                     self.match_token(Token::Operator)?;
@@ -352,7 +378,7 @@ impl<'s> Parser<'s> {
         wasm!(&mut ctx.code, (block) (loop));
 
         // if the expression is false, jump to the end of the block
-        self.expression(ctx)?;
+        self.expression(ctx)?.expect_type(Type::I32)?;
         wasm!(&mut ctx.code, (i32.eqz) (br_if 1));
 
         while self.current.0 != Token::EndWhile {
@@ -373,7 +399,7 @@ impl<'s> Parser<'s> {
         self.match_token(Token::If)?;
 
         // condition
-        self.expression(ctx)?;
+        self.expression(ctx)?.expect_type(Type::I32)?;
 
         wasm!(&mut ctx.code, if);
 
@@ -457,7 +483,7 @@ impl<'s> Parser<'s> {
     }
 
     /// Parse "<number>" or "<ident>" or "( <expression> <op> <expression> )"
-    fn expression(&mut self, ctx: &mut Context) -> Res {
+    fn expression(&mut self, ctx: &mut Context) -> Res<Type> {
         match self.current.0 {
             Token::Number => {
                 let number = match self.source[self.current.1.clone()].parse::<f32>() {
@@ -466,6 +492,7 @@ impl<'s> Parser<'s> {
                 };
                 self.match_token(Token::Number)?;
                 wasm!(&mut ctx.code, (f32.const number));
+                Ok(Type::F32)
             }
             Token::Identifier => {
                 let ident = self.current.clone();
@@ -475,21 +502,42 @@ impl<'s> Parser<'s> {
                 let idx = ctx.local_index_for_symbol(symbol);
 
                 wasm!(&mut ctx.code, local.get idx);
+                Ok(Type::F32)
             }
             Token::LeftParen => {
                 self.match_token(Token::LeftParen)?;
 
                 // left
-                self.expression(ctx)?;
+                let type_a = self.expression(ctx)?;
 
                 let op = self.current.clone();
                 self.match_token(Token::Operator)?;
+                let op = &self.source[op.1];
 
                 // right
-                self.expression(ctx)?;
+                let type_b = self.expression(ctx)?;
 
                 // op
-                match &self.source[op.1] {
+                match op {
+                    "+" | "-" | "*" | "/" | "<" | ">" | "==" => {
+                        if type_a != Type::F32 || type_b != Type::F32 {
+                            return Err(Error::UnexpectedType {
+                                expected: &[Type::F32, Type::F32],
+                                received: vec![type_a, type_b],
+                            });
+                        }
+                    }
+                    "&&" => {
+                        if type_a != Type::I32 || type_b != Type::I32 {
+                            return Err(Error::UnexpectedType {
+                                expected: &[Type::I32, Type::I32],
+                                received: vec![type_a, type_b],
+                            });
+                        }
+                    }
+                    _ => unreachable!("I already match the token operator"),
+                }
+                match op {
                     "+" => wasm!(&mut ctx.code, f32.add),
                     "-" => wasm!(&mut ctx.code, f32.sub),
                     "*" => wasm!(&mut ctx.code, f32.mul),
@@ -502,6 +550,12 @@ impl<'s> Parser<'s> {
                 }
 
                 self.match_token(Token::RightParen)?;
+
+                match op {
+                    "+" | "-" | "*" | "/" => Ok(Type::F32),
+                    "==" | "<" | ">" | "&&" => Ok(Type::I32),
+                    _ => unreachable!("I already match the token operator"),
+                }
             }
             _ => {
                 return Err(Error::UnexpectedToken {
@@ -510,6 +564,5 @@ impl<'s> Parser<'s> {
                 })
             }
         }
-        Ok(())
     }
 }
