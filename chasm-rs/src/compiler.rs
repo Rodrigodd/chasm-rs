@@ -76,7 +76,7 @@ pub enum Error {
     #[error("Unexpected token value, expected {expected:?}, received {received:?}")]
     UnexpectedToken {
         expected: &'static [Token],
-        received: Token,
+        received: (Token, Span),
     },
     #[error("Failed to parse float number ({0})")]
     ParseFloatError(ParseFloatError),
@@ -182,7 +182,7 @@ impl<'s> Parser<'s> {
         if self.current.0 != token {
             Err(Error::UnexpectedToken {
                 expected: std::slice::from_ref(token.to_static()),
-                received: self.current.0.clone(),
+                received: self.current.clone(),
             })
         } else {
             self.eat_token();
@@ -231,7 +231,7 @@ impl<'s> Parser<'s> {
                 _ => {
                     return Err(Error::UnexpectedToken {
                         expected: &[Token::Assignment, Token::LeftParen],
-                        received: self.current.0.clone(),
+                        received: self.next.clone(),
                     })
                 }
             },
@@ -241,7 +241,7 @@ impl<'s> Parser<'s> {
             _ => {
                 return Err(Error::UnexpectedToken {
                     expected: &[Token::Print, Token::Var, Token::Identifier, Token::While],
-                    received: self.current.0.clone(),
+                    received: self.current.clone(),
                 })
             }
         }
@@ -506,7 +506,7 @@ impl<'s> Parser<'s> {
             _ => {
                 return Err(Error::UnexpectedToken {
                     expected: &[Token::Number, Token::LeftParen],
-                    received: self.current.0.clone(),
+                    received: self.current.clone(),
                 })
             }
         }

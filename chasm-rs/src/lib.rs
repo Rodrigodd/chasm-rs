@@ -4,6 +4,7 @@ mod wasm_macro;
 use wasm_macro::wasm;
 
 mod compiler;
+pub use compiler::Error;
 
 #[cfg(test)]
 mod test;
