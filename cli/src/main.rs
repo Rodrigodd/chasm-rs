@@ -29,8 +29,8 @@ fn main() -> anyhow::Result<()> {
         let code = std::fs::read_to_string(&args[1])?;
         let binary = match chasm_rs::compile(&code) {
             Ok(it) => it,
-            Err(err) => match err.downcast_ref::<chasm_rs::Error>() {
-                Some(chasm_rs::Error::UnexpectedToken { expected, received: (token, span)}) => {
+            Err(err) => match err {
+                chasm_rs::Error::UnexpectedToken { expected, received: (token, span)} => {
                     let (line, column) = code.lines().enumerate().find_map(|(line, x)| {
                         let start = x.as_ptr() as usize - code.as_ptr() as usize;
                         let column = span.start - start;
@@ -39,7 +39,7 @@ fn main() -> anyhow::Result<()> {
                     eprintln!("Unexpected token value, expected {:?}, received {:?}, at {}:{}", expected, token, line, column);
                     std::process::exit(1);
                 }
-                _ => return Err(err),
+                _ => Err(err)?,
             },
         };
         let out = Arc::new(Mutex::new(ToWriteFmt(std::io::stdout())));

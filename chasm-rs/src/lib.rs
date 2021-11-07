@@ -28,7 +28,7 @@ fn write_section(w: &mut Vec<u8>, section_type: u8, f: impl Fn(&mut Vec<u8>)) {
 }
 
 /// Compile the given chasm source code in a wasm binary.
-pub fn compile(source: &str) -> anyhow::Result<Vec<u8>> {
+pub fn compile(source: &str) -> Result<Vec<u8>, Error> {
     let functions = compiler::Parser::parse(source)?;
 
     let mut binary = wasm!( new

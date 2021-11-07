@@ -9,7 +9,6 @@ edition = "2018"
 
 [dependencies]
 
-anyhow = "1"
 leb128 = "0.2"
 logos = "0.12"
 thiserror = "1"

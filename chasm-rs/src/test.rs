@@ -1,10 +1,12 @@
 use super::*;
 use std::sync::{Arc, Mutex};
 
+use crate::Error;
+
 macro_rules! test_output {
 	($name:ident, $source:expr, $output:expr) => {
 		#[test]
-        fn $name() -> anyhow::Result<()> {
+        fn $name() -> Result<(), Error> {
             check_output($source, $output)
         }
 	};
@@ -13,10 +15,10 @@ macro_rules! test_output {
     };
 }
 
-fn check_output(source: &str, expected: &str) -> anyhow::Result<()> {
+fn check_output(source: &str, expected: &str) -> Result<(), Error> {
     let binary = compile(source)?;
     let out = Arc::new(Mutex::new(String::new()));
-    run_wasm::run_binary(&binary, out.clone())?;
+    run_wasm::run_binary(&binary, out.clone()).unwrap();
     assert_eq!(*out.lock().unwrap(), expected);
     Ok(())
 }
@@ -68,7 +70,7 @@ fn print_print() {
     check_output("print print", "").unwrap()
 }
 #[test]
-fn mandelbrot() -> anyhow::Result<()> {
+fn mandelbrot() -> Result<(), Error> {
     let source = "
 var y  = 0
 while (y < 100)
@@ -98,7 +100,7 @@ while (y < 100)
 endwhile";
     let binary = compile(source)?;
     let out = Arc::new(Mutex::new(String::new()));
-    let output = run_wasm::run_binary(&binary, out.clone())?;
+    let output = run_wasm::run_binary(&binary, out.clone()).unwrap();
 
     let hash = blake3::hash(&output);
     assert_eq!(&hash.to_hex()[0..16], "28ad088dd153090f");

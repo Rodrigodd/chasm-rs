@@ -181,7 +181,6 @@ dependencies = [
 name = "chasm-rs"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "blake3",
  "leb128",
  "logos",

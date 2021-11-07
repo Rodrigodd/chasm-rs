@@ -41,7 +41,7 @@ use wasmer::WasmerEnv;
 pub fn run_binary<W: Write + Send + 'static>(
     binary: &[u8],
     out: Arc<Mutex<W>>,
-) -> anyhow::Result<Vec<u8>> {
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     dump_hex(&binary);
 
     struct Writer<W: Send> {
