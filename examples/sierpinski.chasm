@@ -1,0 +1,18 @@
+
+proc triangle(x,y,w)
+    if (w == 2)
+        var a = x
+        var b = y
+        setpixel ((a + 0), (b + 0), 255)
+        setpixel ((a + 0), (b + 1), 255)
+        setpixel ((a + 1), (b + 0), 255)
+        setpixel ((a + 1), (b + 1), 255)
+    else
+        w = (w / 2)
+        triangle(x, y, w)
+        triangle((x - (w / 2)), (y + w), w)
+        triangle((x + (w / 2)), (y + w), w)
+    endif
+endproc
+
+triangle (49, 18, 64)        

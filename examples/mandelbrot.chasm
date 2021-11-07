@@ -1,0 +1,22 @@
+var y = 0
+while (y < 100)
+  var x  = 0
+  while (x < 100)
+    var cr = ((y / 50) - 1.5)
+    var ci = ((x / 50) - 1)
+
+    var i = 0
+    var j = 0
+    var iter = 0
+
+    while ((((i * i) + (j * j)) < 4) && (iter < 255))
+      var ni = (((i * i) - (j * j)) + cr)
+      j = (((2 * i) * j) + ci)
+      i = ni
+      iter = (iter + 1)
+    endwhile
+    setpixel (x, y, iter)
+    x = (x + 1)
+  endwhile
+  y = (y + 1)
+endwhile
