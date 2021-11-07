@@ -71,7 +71,7 @@ use thiserror::Error;
 
 use crate::wasm_macro::wasm;
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq, Eq)]
 pub enum Error {
     #[error("Unexpected token value, expected {expected:?}, received {received:?}")]
     UnexpectedToken {

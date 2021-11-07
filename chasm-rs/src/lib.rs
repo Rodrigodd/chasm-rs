@@ -3,7 +3,7 @@ use std::io::Write;
 mod wasm_macro;
 use wasm_macro::wasm;
 
-mod compiler;
+pub(crate) mod compiler;
 pub use compiler::Error;
 
 #[cfg(test)]
