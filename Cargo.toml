@@ -1,4 +1,4 @@
 [workspace]
 
-members = ["chasm-rs", "cli"]
+members = ["chasm-rs", "chasm-wasm", "cli"]
 
