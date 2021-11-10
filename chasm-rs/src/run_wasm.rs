@@ -4,7 +4,10 @@ use std::sync::{Arc, Mutex};
 
 use wasmi::memory_units::Pages;
 use wasmi::nan_preserving_float::F32;
-use wasmi::{Externals, FuncInstance, ImportsBuilder, Module, ModuleImportResolver, ModuleInstance, RuntimeValue, Signature, ValueType, Error as InterpreterError, MemoryInstance};
+use wasmi::{
+    Error as InterpreterError, Externals, FuncInstance, ImportsBuilder, MemoryInstance, Module,
+    ModuleImportResolver, ModuleInstance, RuntimeValue, Signature, ValueType,
+};
 
 pub fn dump_hex(data: &[u8]) {
     let mut bytes = data;
@@ -42,7 +45,11 @@ pub fn dump_hex(data: &[u8]) {
 
 struct EnvModuleResolver(wasmi::MemoryRef);
 impl ModuleImportResolver for EnvModuleResolver {
-    fn resolve_func(&self, field_name: &str, _signature: &wasmi::Signature) -> Result<wasmi::FuncRef, wasmi::Error> {
+    fn resolve_func(
+        &self,
+        field_name: &str,
+        _signature: &wasmi::Signature,
+    ) -> Result<wasmi::FuncRef, wasmi::Error> {
         let func = match field_name {
             "print" => FuncInstance::alloc_host(Signature::new(&[ValueType::F32][..], None), 0),
             _ => {
@@ -55,7 +62,11 @@ impl ModuleImportResolver for EnvModuleResolver {
         Ok(func)
     }
 
-    fn resolve_memory(&self, field_name: &str, _memory_type: &wasmi::MemoryDescriptor) -> Result<wasmi::MemoryRef, InterpreterError> {
+    fn resolve_memory(
+        &self,
+        field_name: &str,
+        _memory_type: &wasmi::MemoryDescriptor,
+    ) -> Result<wasmi::MemoryRef, InterpreterError> {
         let mem = match field_name {
             "memory" => self.0.clone(),
             _ => panic!("HAHAHAH!!"),
@@ -66,13 +77,17 @@ impl ModuleImportResolver for EnvModuleResolver {
 
 struct Runtime<W: Write>(Arc<Mutex<W>>);
 impl<W: Write> Externals for Runtime<W> {
-    fn invoke_index(&mut self, index: usize, args: wasmi::RuntimeArgs) -> Result<Option<RuntimeValue>, wasmi::Trap> {
+    fn invoke_index(
+        &mut self,
+        index: usize,
+        args: wasmi::RuntimeArgs,
+    ) -> Result<Option<RuntimeValue>, wasmi::Trap> {
         match index {
             0 => {
                 let n: f32 = args.nth::<F32>(0).into();
                 writeln!(self.0.lock().unwrap(), "{}", n).unwrap();
-            },
-            _ => panic!("HAHAHAH!!!")
+            }
+            _ => panic!("HAHAHAH!!!"),
         };
         Ok(None)
     }
@@ -96,11 +111,10 @@ pub fn run_binary<W: Write + Send + 'static>(
     // };
     let memory = MemoryInstance::alloc(Pages(1), None).unwrap();
     let resolver = &EnvModuleResolver(memory.clone());
-    let import_object = ImportsBuilder::default()
-        .with_resolver("env", resolver);
+    let import_object = ImportsBuilder::default().with_resolver("env", resolver);
     let instance = ModuleInstance::new(&module, &import_object)?.assert_no_start();
     instance.invoke_export("main", &[], &mut runtime)?;
     let mut data = memory.direct_access().as_ref().to_owned();
-    data.resize(100*100, 0);
+    data.resize(100 * 100, 0);
     Ok(data)
 }

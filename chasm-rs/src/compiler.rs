@@ -27,7 +27,9 @@ pub enum Token {
     Proc,
     #[token("endproc")]
     EndProc,
-    #[regex(r"(\+|-|\*|/|==|<|>|&&|,)")]
+    #[token(",")]
+    Comma,
+    #[regex(r"(\+|-|\*|/|==|<|>|&&)")]
     Operator,
     #[regex(r"[a-zA-Z]+")]
     Identifier,
@@ -56,6 +58,7 @@ impl Token {
             Token::Else => &Token::Else,
             Token::Proc => &Token::Proc,
             Token::EndProc => &Token::EndProc,
+            Token::Comma => &Token::Comma,
             Token::Operator => &Token::Operator,
             Token::Identifier => &Token::Identifier,
             Token::Assignment => &Token::Assignment,
@@ -87,6 +90,8 @@ pub enum Error {
         expected: &'static [Type],
         received: Vec<Type>,
     },
+    #[error("Undeclared procedural {name:?}")]
+    UndeclaredProc { name: String },
 }
 
 type Res<T = ()> = Result<T, Error>;
@@ -191,7 +196,13 @@ impl<'s> Parser<'s> {
 
         parser.procedures.get_mut("main").unwrap().code = ctx.code;
 
-        let mut procedures: Vec<_> = parser.procedures.into_values().collect();
+        let mut procedures: Vec<_> = Vec::with_capacity(parser.procedures.len());
+        for (name, p) in parser.procedures.into_iter() {
+            if p.code.is_empty() {
+                return Err(Error::UndeclaredProc { name });
+            }
+            procedures.push(p);
+        }
         procedures.sort_by_key(|x| x.idx);
         Ok(procedures)
     }
@@ -319,13 +330,13 @@ impl<'s> Parser<'s> {
             let x_idx = ctx.local_index_for_symbol("x");
             wasm!(&mut ctx.code, local.set x_idx);
 
-            self.match_token(Token::Operator)?;
+            self.match_token(Token::Comma)?;
 
             self.expression(ctx)?.expect_type(Type::F32)?;
             let y_idx = ctx.local_index_for_symbol("y");
             wasm!(&mut ctx.code, local.set y_idx);
 
-            self.match_token(Token::Operator)?;
+            self.match_token(Token::Comma)?;
 
             self.expression(ctx)?.expect_type(Type::F32)?;
             let color_idx = ctx.local_index_for_symbol("color");
@@ -356,7 +367,7 @@ impl<'s> Parser<'s> {
                 self.expression(ctx)?.expect_type(Type::F32)?;
                 n += 1;
                 if self.current.0 != Token::RightParen {
-                    self.match_token(Token::Operator)?;
+                    self.match_token(Token::Comma)?;
                 } else {
                     break;
                 }
@@ -439,7 +450,7 @@ impl<'s> Parser<'s> {
             args.push(arg.to_string());
 
             if self.current.0 != Token::RightParen {
-                self.match_token(Token::Operator)?;
+                self.match_token(Token::Comma)?;
             } else {
                 break;
             }

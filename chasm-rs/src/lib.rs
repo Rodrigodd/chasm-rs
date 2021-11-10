@@ -7,9 +7,9 @@ pub(crate) mod compiler;
 pub use compiler::Error;
 
 #[cfg(test)]
-mod test;
-#[cfg(test)]
 mod run_wasm;
+#[cfg(test)]
+mod test;
 
 fn write_section(w: &mut Vec<u8>, section_type: u8, f: impl Fn(&mut Vec<u8>)) {
     // section type
@@ -51,7 +51,7 @@ pub fn compile(source: &str) -> Result<Vec<u8>, Error> {
         }
     });
 
-    wasm!(&mut binary, 
+    wasm!(&mut binary,
         (section import (vec
             (import "env" "print" (function 0x0))
             (import "env" "memory" (memory 1))))
@@ -82,4 +82,3 @@ pub fn compile(source: &str) -> Result<Vec<u8>, Error> {
 
     Ok(binary)
 }
-

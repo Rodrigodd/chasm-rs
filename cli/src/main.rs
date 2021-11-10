@@ -1,11 +1,11 @@
 use std::io::Write;
 use std::sync::{Arc, Mutex};
-use wasmer::{Instance, Module, Memory, imports, Store, WasmerEnv, MemoryType, Function};
+use wasmer::{imports, Function, Instance, Memory, MemoryType, Module, Store, WasmerEnv};
 
 struct ToWriteFmt<T>(pub T);
 impl<T> std::fmt::Write for ToWriteFmt<T>
 where
-T: std::io::Write,
+    T: std::io::Write,
 {
     fn write_str(&mut self, s: &str) -> std::fmt::Result {
         self.0.write_all(s.as_bytes()).map_err(|_| std::fmt::Error)
@@ -15,7 +15,7 @@ T: std::io::Write,
 fn print_ascii_art(art: &[u8]) {
     for y in 0..100 {
         for x in 0..100 {
-            let b = art[y*100 + x];
+            let b = art[y * 100 + x];
             let c = [' ', '-', '=', '#'][(b / 64) as usize];
             print!("{}", c);
         }
@@ -30,13 +30,25 @@ fn main() -> anyhow::Result<()> {
         let binary = match chasm_rs::compile(&code) {
             Ok(it) => it,
             Err(err) => match err {
-                chasm_rs::Error::UnexpectedToken { expected, received: (token, span)} => {
-                    let (line, column) = code.lines().enumerate().find_map(|(line, x)| {
-                        let start = x.as_ptr() as usize - code.as_ptr() as usize;
-                        let column = span.start - start;
-                        (start..start + x.len()).contains(&span.start).then(|| (line + 1, column + 1))
-                    }).unwrap_or((0,0));
-                    eprintln!("Unexpected token value, expected {:?}, received {:?}, at {}:{}", expected, token, line, column);
+                chasm_rs::Error::UnexpectedToken {
+                    expected,
+                    received: (token, span),
+                } => {
+                    let (line, column) = code
+                        .lines()
+                        .enumerate()
+                        .find_map(|(line, x)| {
+                            let start = x.as_ptr() as usize - code.as_ptr() as usize;
+                            let column = span.start - start;
+                            (start..start + x.len())
+                                .contains(&span.start)
+                                .then(|| (line + 1, column + 1))
+                        })
+                        .unwrap_or((0, 0));
+                    eprintln!(
+                        "Unexpected token value, expected {:?}, received {:?}, at {}:{}",
+                        expected, token, line, column
+                    );
                     std::process::exit(1);
                 }
                 _ => Err(err)?,
@@ -58,21 +70,21 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn screen(art: &[u8]) -> anyhow::Result<()> {
-    use minifb::{Window, Key, WindowOptions};
+    use minifb::{Key, Window, WindowOptions};
     const SCALE: usize = 3;
-    const WIDTH: usize = 100*SCALE;
-    const HEIGHT: usize = 100*SCALE;
+    const WIDTH: usize = 100 * SCALE;
+    const HEIGHT: usize = 100 * SCALE;
     let mut window = Window::new("chasm", WIDTH, HEIGHT, WindowOptions::default())?;
     window.limit_update_rate(Some(std::time::Duration::from_micros(16666)));
 
-    let mut buffer = vec![0; WIDTH*HEIGHT];
+    let mut buffer = vec![0; WIDTH * HEIGHT];
     for (i, &b) in art.iter().enumerate() {
-        let x = SCALE*(i % 100);
-        let y = SCALE*(i / 100);
-        let c = u32::from_be_bytes([0, b,b,b]);
-        for y in y..y+SCALE {
-            for x in x..x+SCALE {
-                buffer[x + WIDTH*y] = c;
+        let x = SCALE * (i % 100);
+        let y = SCALE * (i / 100);
+        let c = u32::from_be_bytes([0, b, b, b]);
+        for y in y..y + SCALE {
+            for x in x..x + SCALE {
+                buffer[x + WIDTH * y] = c;
             }
         }
     }
@@ -103,7 +115,6 @@ fn repl() -> anyhow::Result<()> {
         };
         let out = Arc::new(Mutex::new(ToWriteFmt(std::io::stdout())));
         run_binary(&binary, out)?;
-
     }
 }
 
@@ -136,6 +147,6 @@ pub fn run_binary<W: std::fmt::Write + Send + 'static>(
     let main = instance.exports.get_function("main")?;
     main.call(&[])?;
     let mut data = unsafe { memory.data_unchecked() }.to_owned();
-    data.resize(100*100, 0);
+    data.resize(100 * 100, 0);
     Ok(data)
 }

@@ -90,8 +90,8 @@ macro_rules! wasm {
         { ($w).write(&[0x45]).unwrap(); }
     };
     ($w:expr, i32.store8 $aling:literal $offset:literal) => {
-        { 
-            ($w).write(&[0x3a]).unwrap(); 
+        {
+            ($w).write(&[0x3a]).unwrap();
             leb128::write::unsigned($w, ($aling) as u64).unwrap();
             leb128::write::unsigned($w, ($offset) as u64).unwrap();
         }
@@ -225,7 +225,7 @@ macro_rules! wasm {
     (section_type function) => { 3 };
     (section_type export) => { 7 };
     (section_type code) => { 10 };
-    
+
     (export_type function) => { 0x00 };
     (export_type table) => { 0x01 };
     (export_type memory) => { 0x02 };

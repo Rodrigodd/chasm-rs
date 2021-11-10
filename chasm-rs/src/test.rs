@@ -21,10 +21,13 @@ fn check_output(source: &str, expected: Result<&str, Error>) {
     let binary = compile(source);
     match (expected, binary) {
         (Err(expected), Err(binary)) => assert_eq!(expected, binary),
-        (Ok(expected), Ok(binary)) => {
+        (expected, Ok(binary)) => {
             let out = Arc::new(Mutex::new(String::new()));
             run_wasm::run_binary(&binary, out.clone()).unwrap();
-            assert_eq!(*out.lock().unwrap(), expected);
+            match expected {
+                Err(expected) => panic!("expected {:?}, received {:?}", expected, binary),
+                Ok(expected) => assert_eq!(*out.lock().unwrap(), expected),
+            }
         }
         (expected, binary) => panic!("expected {:?}, received {:?}", expected, binary),
     }
@@ -86,6 +89,11 @@ test_output!(
         Err(Error::UnexpectedType { expected: &[Type::F32, Type::F32], received: vec![Type::I32, Type::I32] }))
     (and_float, "print (0.0 && 0.0)",
         Err(Error::UnexpectedType { expected: &[Type::I32, Type::I32], received: vec![Type::F32, Type::F32] }))
+
+    (unknown_proc, "\n\n\nvM(8)",
+        Err(Error::UndeclaredProc { name: "vM".to_string() }))
+    (unclosed_paren, "LM((88,8",
+        Err(Error::UnexpectedToken { expected: &[Token::Operator], received: (Token::Comma, 6..7) }))
 );
 
 #[test]
