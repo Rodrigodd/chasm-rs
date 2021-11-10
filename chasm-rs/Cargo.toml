@@ -16,4 +16,4 @@ thiserror = "1"
 [dev-dependencies]
 
 blake3 = "1"
-wasmer = "2"
+wasmi = "0.9"
