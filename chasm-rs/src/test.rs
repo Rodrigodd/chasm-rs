@@ -17,10 +17,10 @@ macro_rules! test_output {
     };
 }
 
-fn check_output(source: &str, expected: Result<&str, Error>) {
+fn check_output(source: &str, expected: Result<&str, ErrorKind>) {
     let binary = compile(source);
     match (expected, binary) {
-        (Err(expected), Err(binary)) => assert_eq!(expected, binary),
+        (Err(expected), Err(binary)) => assert_eq!(expected, binary.kind),
         (expected, Ok(binary)) => {
             let out = Arc::new(Mutex::new(String::new()));
             run_wasm::run_binary(&binary, out.clone()).unwrap();
@@ -74,30 +74,30 @@ test_output!(
     (setpixel_side_effect, "print 0 setpixel(0, 1, 2) print x print y print color", Ok("0\n0\n1\n2\n"))
     (print_print, 
         "print print",
-        Err(Error::UnexpectedToken {
-            received: (Token::Print, 6..11),
+        Err(ErrorKind::UnexpectedToken {
+            received: Token::Print,
             expected: &[Token::Number, Token::LeftParen]
         })
     )
     (while_float, "while 0.0 print 1 endwhile",
-        Err(Error::UnexpectedType { expected: &[Type::I32], received: vec![Type::F32] }))
+        Err(ErrorKind::UnexpectedType { expected: &[Type::I32], received: vec![Type::F32] }))
     (if_float, "if 0.0 print 1 endif",
-        Err(Error::UnexpectedType { expected: &[Type::I32], received: vec![Type::F32] }))
+        Err(ErrorKind::UnexpectedType { expected: &[Type::I32], received: vec![Type::F32] }))
     (equal_bool, "print ((0.0 == 0.0) == (1.0 == 1.0))",
-        Err(Error::UnexpectedType { expected: &[Type::F32, Type::F32], received: vec![Type::I32, Type::I32] }))
+        Err(ErrorKind::UnexpectedType { expected: &[Type::F32, Type::F32], received: vec![Type::I32, Type::I32] }))
     (divide_bool, "print ((0.0 == 0.0) / (1.0 == 1.0))",
-        Err(Error::UnexpectedType { expected: &[Type::F32, Type::F32], received: vec![Type::I32, Type::I32] }))
+        Err(ErrorKind::UnexpectedType { expected: &[Type::F32, Type::F32], received: vec![Type::I32, Type::I32] }))
     (and_float, "print (0.0 && 0.0)",
-        Err(Error::UnexpectedType { expected: &[Type::I32, Type::I32], received: vec![Type::F32, Type::F32] }))
+        Err(ErrorKind::UnexpectedType { expected: &[Type::I32, Type::I32], received: vec![Type::F32, Type::F32] }))
 
     (unknown_proc, "\n\n\nvM(8)",
-        Err(Error::UndeclaredProc { name: "vM".to_string() }))
+        Err(ErrorKind::UndeclaredProc { name: "vM".to_string() }))
     (unclosed_paren, "LM((88,8",
-        Err(Error::UnexpectedToken { expected: &[Token::Operator], received: (Token::Comma, 6..7) }))
+        Err(ErrorKind::UnexpectedToken { expected: &[Token::Operator], received: Token::Comma }))
 );
 
 #[test]
-fn mandelbrot() -> Result<(), Error> {
+fn mandelbrot() -> Result<(), Error<'static>> {
     let source = "
 var y  = 0
 while (y < 100)

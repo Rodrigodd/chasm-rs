@@ -29,30 +29,10 @@ fn main() -> anyhow::Result<()> {
         let code = std::fs::read_to_string(&args[1])?;
         let binary = match chasm_rs::compile(&code) {
             Ok(it) => it,
-            Err(err) => match err {
-                chasm_rs::Error::UnexpectedToken {
-                    expected,
-                    received: (token, span),
-                } => {
-                    let (line, column) = code
-                        .lines()
-                        .enumerate()
-                        .find_map(|(line, x)| {
-                            let start = x.as_ptr() as usize - code.as_ptr() as usize;
-                            let column = span.start - start;
-                            (start..start + x.len())
-                                .contains(&span.start)
-                                .then(|| (line + 1, column + 1))
-                        })
-                        .unwrap_or((0, 0));
-                    eprintln!(
-                        "Unexpected token value, expected {:?}, received {:?}, at {}:{}",
-                        expected, token, line, column
-                    );
-                    std::process::exit(1);
-                }
-                _ => Err(err)?,
-            },
+            Err(err) => {
+                eprintln!("{}", err.to_string());
+                std::process::exit(1);
+            }
         };
         let out = Arc::new(Mutex::new(ToWriteFmt(std::io::stdout())));
         let art = run_binary(&binary, out)?;

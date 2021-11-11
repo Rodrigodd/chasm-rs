@@ -69,32 +69,132 @@ impl Token {
         }
     }
 }
-
-use thiserror::Error;
+impl std::fmt::Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Token::Number => "<number>",
+            Token::Print => "\"print\"",
+            Token::Var => "\"var\"",
+            Token::While => "\"while\"",
+            Token::EndWhile => "\"endwhile\"",
+            Token::If => "\"if\"",
+            Token::EndIf => "\"endif\"",
+            Token::Else => "\"else\"",
+            Token::Proc => "\"proc\"",
+            Token::EndProc => "\"endproc\"",
+            Token::Comma => "\",\"",
+            Token::Operator => "<operator>",
+            Token::Identifier => "<identifier>",
+            Token::Assignment => "\"=\"",
+            Token::LeftParen => "\"(\"",
+            Token::RightParen => "\")\"",
+            Token::Error => "<error>",
+            Token::EOF => "<eof>",
+        };
+        write!(f, "{}", s)
+    }
+}
 
 use crate::wasm_macro::wasm;
 
-#[derive(Error, Debug, PartialEq, Eq)]
-pub enum Error {
-    #[error("Unexpected token value, expected {expected:?}, received {received:?}")]
+struct OrList<'a>(&'a [Token]);
+impl std::fmt::Display for OrList<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let len = self.0.len();
+        if len == 0 {
+            return write!(f, "nothing");
+        }
+        write!(f, "{}", self.0[0])?;
+        if len == 1 {
+            return Ok(());
+        }
+        for t in &self.0[1..len-1] {
+            write!(f, ", {}", t)?;
+        }
+        write!(f, " or {}", self.0[len-1])
+    }
+}
+
+#[derive(Debug)]
+pub struct Error<'source> {
+    pub source: &'source str,
+    pub span: Span,
+    pub kind: ErrorKind,
+}
+impl Error<'_> {
+    pub fn get_line_column(&self) -> (usize, usize) {
+        self.source
+            .lines()
+            .enumerate()
+            .find_map(|(line, x)| {
+                let start = x.as_ptr() as usize - self.source.as_ptr() as usize;
+                let column = self.span.start - start;
+                (start..start + x.len())
+                    .contains(&self.span.start)
+                    .then(|| (line + 1, column + 1))
+            })
+        .unwrap_or((0, 0))
+    }
+}
+impl std::fmt::Display for Error<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let (line, column) = self.get_line_column();
+        write!(f, "error at {}:{}: ", line, column)?;
+
+        match &self.kind {
+            ErrorKind::UnexpectedToken { expected, received } => {
+                write!(
+                    f,
+                    "unexpected token value, expected {}, received {}",
+                    OrList(expected), received
+                )
+            }
+            ErrorKind::ParseFloatError(x) => {
+                write!(f, "failed to parse float number ({})", x)
+            }
+            ErrorKind::ArgumentNumberMismatch { expected, received } => {
+                write!(
+                    f,
+                    "number of arguments mismatch, expected {}, received {}",
+                    expected, received
+                )
+            }
+            ErrorKind::UnexpectedType { expected, received } => {
+                write!(
+                    f,
+                    "unexpected number type, expected {:?}, received {:?}",
+                    expected, received
+                )
+            }
+            ErrorKind::UndeclaredProc { name } => {
+                write!(f, "Undeclared procedural {:?}", name)
+            }
+        }
+    }
+}
+impl std::error::Error for Error<'_> {}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum ErrorKind {
     UnexpectedToken {
         expected: &'static [Token],
-        received: (Token, Span),
+        received: Token,
     },
-    #[error("Failed to parse float number ({0})")]
     ParseFloatError(ParseFloatError),
-    #[error("Number of arguments mismatch, expected {expected:?}, received {received:?}")]
-    ArgumentNumberMismatch { expected: u32, received: u32 },
-    #[error("Unexpected number type, expected {expected:?}, received {received:?}")]
+    ArgumentNumberMismatch {
+        expected: u32,
+        received: u32,
+    },
     UnexpectedType {
         expected: &'static [Type],
         received: Vec<Type>,
     },
-    #[error("Undeclared procedural {name:?}")]
-    UndeclaredProc { name: String },
+    UndeclaredProc {
+        name: String,
+    },
 }
 
-type Res<T = ()> = Result<T, Error>;
+type Res<'s, T = ()> = Result<T, Error<'s>>;
 
 type LocalIdx = u32;
 type FuncIdx = u32;
@@ -103,21 +203,6 @@ type FuncIdx = u32;
 pub enum Type {
     I32,
     F32,
-}
-impl Type {
-    fn expect_type(self, other: Self) -> Res {
-        if self != other {
-            Err(Error::UnexpectedType {
-                expected: std::slice::from_ref(match other {
-                    Self::I32 => &Self::I32,
-                    Self::F32 => &Self::F32,
-                }),
-                received: vec![self],
-            })
-        } else {
-            Ok(())
-        }
-    }
 }
 
 pub struct Procedure {
@@ -176,9 +261,8 @@ impl<'s> Parser<'s> {
         };
 
         // compile statements
-        let ref mut this = parser;
-        while this.current.0 != Token::EOF {
-            this.statement(&mut ctx)?;
+        while parser.current.0 != Token::EOF {
+            parser.statement(&mut ctx)?;
         }
         parser.match_token(Token::EOF)?;
         wasm!(&mut ctx.code, end);
@@ -199,7 +283,11 @@ impl<'s> Parser<'s> {
         let mut procedures: Vec<_> = Vec::with_capacity(parser.procedures.len());
         for (name, p) in parser.procedures.into_iter() {
             if p.code.is_empty() {
-                return Err(Error::UndeclaredProc { name });
+                return Err(Error {
+                    source: parser.source,
+                    span: parser.current.1,
+                    kind: ErrorKind::UndeclaredProc { name },
+                });
             }
             procedures.push(p);
         }
@@ -215,11 +303,15 @@ impl<'s> Parser<'s> {
         });
     }
 
-    fn match_token(&mut self, token: Token) -> Res {
+    fn match_token(&mut self, token: Token) -> Res<'s> {
         if self.current.0 != token {
-            Err(Error::UnexpectedToken {
-                expected: std::slice::from_ref(token.to_static()),
-                received: self.current.clone(),
+            Err(Error {
+                source: self.source,
+                span: self.current.1.clone(),
+                kind: ErrorKind::UnexpectedToken {
+                    expected: std::slice::from_ref(token.to_static()),
+                    received: self.current.clone().0,
+                },
             })
         } else {
             self.eat_token();
@@ -227,19 +319,42 @@ impl<'s> Parser<'s> {
         }
     }
 
+    fn expect_type(&mut self, rec: Type, expec: Type, start: usize) -> Res<'s, Type> {
+        if rec != expec {
+            Err(Error {
+                source: self.source,
+                span: start..self.current.1.end,
+                kind: ErrorKind::UnexpectedType {
+                    expected: std::slice::from_ref(match expec {
+                        Type::I32 => &Type::I32,
+                        Type::F32 => &Type::F32,
+                    }),
+                    received: vec![rec],
+                },
+            })
+        } else {
+            Ok(rec)
+        }
+    }
+
     fn procedure_from_symbol<'a>(
         &'a mut self,
         symbol: &str,
         num_param: u32,
-    ) -> Res<&'a mut Procedure> {
+    ) -> Res<'s, &'a mut Procedure> {
         if let Some(_) = self.procedures.get_mut(symbol) {
             // need to borrow twice, because of borrow checker
             let proc = self.procedures.get_mut(symbol).unwrap();
 
+            // Err($a) ==>> Err(Error { source: self.source, span: self.current.1.clone(), kind: $a })
             if proc.num_param != num_param {
-                return Err(Error::ArgumentNumberMismatch {
-                    expected: proc.num_param,
-                    received: num_param,
+                return Err(Error {
+                    source: self.source,
+                    span: self.current.1.clone(),
+                    kind: ErrorKind::ArgumentNumberMismatch {
+                        expected: proc.num_param,
+                        received: num_param,
+                    },
                 });
             }
 
@@ -258,7 +373,7 @@ impl<'s> Parser<'s> {
     }
 
     // parse "<statement>*"
-    fn statement(&mut self, ctx: &mut Context) -> Res {
+    fn statement(&mut self, ctx: &mut Context) -> Res<'s> {
         match self.current.0 {
             Token::Print => self.print_statement(ctx)?,
             Token::Var => self.variable_declaration(ctx)?,
@@ -266,9 +381,13 @@ impl<'s> Parser<'s> {
                 Token::Assignment => self.variable_assignment(ctx)?,
                 Token::LeftParen => self.proc_call(ctx)?,
                 _ => {
-                    return Err(Error::UnexpectedToken {
-                        expected: &[Token::Assignment, Token::LeftParen],
-                        received: self.next.clone(),
+                    return Err(Error {
+                        source: self.source,
+                        span: self.current.1.clone(),
+                        kind: ErrorKind::UnexpectedToken {
+                            expected: &[Token::Assignment, Token::LeftParen],
+                            received: self.next.clone().0,
+                        },
                     })
                 }
             },
@@ -276,9 +395,13 @@ impl<'s> Parser<'s> {
             Token::If => self.if_statement(ctx)?,
             Token::Proc => self.proc_statement()?,
             _ => {
-                return Err(Error::UnexpectedToken {
-                    expected: &[Token::Print, Token::Var, Token::Identifier, Token::While],
-                    received: self.current.clone(),
+                return Err(Error {
+                    source: self.source,
+                    span: self.current.1.clone(),
+                    kind: ErrorKind::UnexpectedToken {
+                        expected: &[Token::Print, Token::Var, Token::Identifier, Token::While],
+                        received: self.current.clone().0,
+                    },
                 })
             }
         }
@@ -286,15 +409,17 @@ impl<'s> Parser<'s> {
     }
 
     /// Parse "print <expression>"
-    fn print_statement(&mut self, ctx: &mut Context) -> Res {
+    fn print_statement(&mut self, ctx: &mut Context) -> Res<'s> {
         self.match_token(Token::Print)?;
-        self.expression(ctx)?.expect_type(Type::F32)?;
+        let start = self.current.1.start;
+        let expr = self.expression(ctx)?;
+        self.expect_type(expr, Type::F32, start)?;
         wasm!(&mut ctx.code, (call 0x0));
         Ok(())
     }
 
     /// Parse "var <ident> = <expression>"
-    fn variable_declaration(&mut self, ctx: &mut Context) -> Res {
+    fn variable_declaration(&mut self, ctx: &mut Context) -> Res<'s> {
         // the "var" keyword is purely aesthetic
         self.match_token(Token::Var)?;
 
@@ -302,20 +427,22 @@ impl<'s> Parser<'s> {
     }
 
     /// Parse "<ident> = <expression>"
-    fn variable_assignment(&mut self, ctx: &mut Context) -> Res {
+    fn variable_assignment(&mut self, ctx: &mut Context) -> Res<'s> {
         let ident = self.current.clone();
         self.match_token(Token::Identifier)?;
         let idx = ctx.local_index_for_symbol(&self.source[ident.1]);
 
         self.match_token(Token::Assignment)?;
 
-        self.expression(ctx)?.expect_type(Type::F32)?;
+        let start = self.current.1.start;
+        let expr = self.expression(ctx)?;
+        self.expect_type(expr, Type::F32, start)?;
         wasm!(&mut ctx.code, local.set idx);
         Ok(())
     }
 
     /// Parse "<ident> ( <args>,* )"
-    fn proc_call(&mut self, ctx: &mut Context) -> Res {
+    fn proc_call(&mut self, ctx: &mut Context) -> Res<'s> {
         let symbol = self.current.clone();
         self.match_token(Token::Identifier)?;
         let ident = &self.source[symbol.1];
@@ -326,19 +453,25 @@ impl<'s> Parser<'s> {
 
             // yes, setpixel calls cause side effects in variables
 
-            self.expression(ctx)?.expect_type(Type::F32)?;
+            let start = self.current.1.start;
+            let expr = self.expression(ctx)?;
+            self.expect_type(expr, Type::F32, start)?;
             let x_idx = ctx.local_index_for_symbol("x");
             wasm!(&mut ctx.code, local.set x_idx);
 
             self.match_token(Token::Comma)?;
 
-            self.expression(ctx)?.expect_type(Type::F32)?;
+            let start = self.current.1.start;
+            let expr = self.expression(ctx)?;
+            self.expect_type(expr, Type::F32, start)?;
             let y_idx = ctx.local_index_for_symbol("y");
             wasm!(&mut ctx.code, local.set y_idx);
 
             self.match_token(Token::Comma)?;
 
-            self.expression(ctx)?.expect_type(Type::F32)?;
+            let start = self.current.1.start;
+            let expr = self.expression(ctx)?;
+            self.expect_type(expr, Type::F32, start)?;
             let color_idx = ctx.local_index_for_symbol("color");
             wasm!(&mut ctx.code, local.set color_idx);
 
@@ -364,7 +497,9 @@ impl<'s> Parser<'s> {
 
             let mut n = 0;
             while self.current.0 != Token::RightParen {
-                self.expression(ctx)?.expect_type(Type::F32)?;
+                let start = self.current.1.start;
+                let expr = self.expression(ctx)?;
+                self.expect_type(expr, Type::F32, start)?;
                 n += 1;
                 if self.current.0 != Token::RightParen {
                     self.match_token(Token::Comma)?;
@@ -382,14 +517,16 @@ impl<'s> Parser<'s> {
     }
 
     /// Parse "while <expression> <statements>* endwhile"
-    fn while_statement(&mut self, ctx: &mut Context) -> Res {
+    fn while_statement(&mut self, ctx: &mut Context) -> Res<'s> {
         self.match_token(Token::While)?;
 
         // start a block, and a loop block
         wasm!(&mut ctx.code, (block) (loop));
 
         // if the expression is false, jump to the end of the block
-        self.expression(ctx)?.expect_type(Type::I32)?;
+        let start = self.current.1.start;
+        let expr = self.expression(ctx)?;
+        self.expect_type(expr, Type::I32, start)?;
         wasm!(&mut ctx.code, (i32.eqz) (br_if 1));
 
         while self.current.0 != Token::EndWhile {
@@ -406,11 +543,13 @@ impl<'s> Parser<'s> {
 
     /// Parse "if <expresion> <expression>* endif" or "if <expression> <expression>* else
     /// <expression>* endif"
-    fn if_statement(&mut self, ctx: &mut Context) -> Res {
+    fn if_statement(&mut self, ctx: &mut Context) -> Res<'s> {
         self.match_token(Token::If)?;
 
         // condition
-        self.expression(ctx)?.expect_type(Type::I32)?;
+        let start = self.current.1.start;
+        let expr = self.expression(ctx)?;
+        self.expect_type(expr, Type::I32, start)?;
 
         wasm!(&mut ctx.code, if);
 
@@ -432,7 +571,7 @@ impl<'s> Parser<'s> {
     }
 
     /// Parse "proc <ident> ( <args>,* ) <statement>* endproc"
-    fn proc_statement(&mut self) -> Res {
+    fn proc_statement(&mut self) -> Res<'s> {
         self.match_token(Token::Proc)?;
 
         let name = self.current.clone();
@@ -494,12 +633,18 @@ impl<'s> Parser<'s> {
     }
 
     /// Parse "<number>" or "<ident>" or "( <expression> <op> <expression> )"
-    fn expression(&mut self, ctx: &mut Context) -> Res<Type> {
+    fn expression(&mut self, ctx: &mut Context) -> Res<'s, Type> {
         match self.current.0 {
             Token::Number => {
                 let number = match self.source[self.current.1.clone()].parse::<f32>() {
                     Ok(x) => x,
-                    Err(err) => return Err(Error::ParseFloatError(err)),
+                    Err(err) => {
+                        return Err(Error {
+                            source: self.source,
+                            span: self.current.1.clone(),
+                            kind: ErrorKind::ParseFloatError(err),
+                        })
+                    }
                 };
                 self.match_token(Token::Number)?;
                 wasm!(&mut ctx.code, (f32.const number));
@@ -532,17 +677,25 @@ impl<'s> Parser<'s> {
                 match op {
                     "+" | "-" | "*" | "/" | "<" | ">" | "==" => {
                         if type_a != Type::F32 || type_b != Type::F32 {
-                            return Err(Error::UnexpectedType {
-                                expected: &[Type::F32, Type::F32],
-                                received: vec![type_a, type_b],
+                            return Err(Error {
+                                source: self.source,
+                                span: self.current.1.clone(),
+                                kind: ErrorKind::UnexpectedType {
+                                    expected: &[Type::F32, Type::F32],
+                                    received: vec![type_a, type_b],
+                                },
                             });
                         }
                     }
                     "&&" => {
                         if type_a != Type::I32 || type_b != Type::I32 {
-                            return Err(Error::UnexpectedType {
-                                expected: &[Type::I32, Type::I32],
-                                received: vec![type_a, type_b],
+                            return Err(Error {
+                                source: self.source,
+                                span: self.current.1.clone(),
+                                kind: ErrorKind::UnexpectedType {
+                                    expected: &[Type::I32, Type::I32],
+                                    received: vec![type_a, type_b],
+                                },
                             });
                         }
                     }
@@ -569,9 +722,13 @@ impl<'s> Parser<'s> {
                 }
             }
             _ => {
-                return Err(Error::UnexpectedToken {
-                    expected: &[Token::Number, Token::LeftParen],
-                    received: self.current.clone(),
+                return Err(Error {
+                    source: self.source,
+                    span: self.current.1.clone(),
+                    kind: ErrorKind::UnexpectedToken {
+                        expected: &[Token::Number, Token::LeftParen],
+                        received: self.current.clone().0,
+                    },
                 })
             }
         }

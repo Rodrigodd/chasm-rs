@@ -4,7 +4,7 @@ mod wasm_macro;
 use wasm_macro::wasm;
 
 pub(crate) mod compiler;
-pub use compiler::Error;
+pub use compiler::{Error, ErrorKind};
 
 #[cfg(test)]
 mod run_wasm;
@@ -28,7 +28,7 @@ fn write_section(w: &mut Vec<u8>, section_type: u8, f: impl Fn(&mut Vec<u8>)) {
 }
 
 /// Compile the given chasm source code in a wasm binary.
-pub fn compile(source: &str) -> Result<Vec<u8>, Error> {
+pub fn compile<'s>(source: &'s str) -> Result<Vec<u8>, Error<'s>> {
     let functions = compiler::Parser::parse(source)?;
 
     let mut binary = wasm!( new
