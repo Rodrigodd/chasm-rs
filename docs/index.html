@@ -99,31 +99,34 @@
         <div class="col-md-5">
           <b>Code</b>
           <textarea rows="20" class="form-control" id="code" wrap="off">
-var y  = 0
+var y = 0
 while (y < 100)
-  y = (y + 1)
-  var x  = 0
+  var x = 0
   while (x < 100)
-    x = (x + 1)
+    var cr = -0.8
+    var ci = 0.156
 
-    var e = ((y / 50) - 1.5)
-    var f = ((x / 50) - 1)
+    var in = ((y - 50) / 45)
+    var jn = ((x - 50) / 45)
 
-    var a = 0
-    var b = 0
-    var i = 0
-    var j = 0
-    var c = 0
+    var cos = 0.707
+    var sin = 0.707
 
-    while ((((i * i) + (j * j)) < 4) && (c < 255))
-      i = (((a * a) - (b * b)) + e)
-      j = (((2 * a) * b) + f)
-      a = i
-      b = j
-      c = (c + 1)
+    var i = ((cos * in) - (sin * jn))
+    var j = ((cos * jn) + (sin * in))
+
+    var iter = 0
+
+    while ((((i * i) + (j * j)) < 4) && (iter < 255))
+      var ni = (((i * i) - (j * j)) + cr)
+      j = (((2 * i) * j) + ci)
+      i = ni
+      iter = (iter + 1)
     endwhile
-    setpixel (x, y, c)
+    setpixel (x, y, iter)
+    x = (x + 1)
   endwhile
+  y = (y + 1)
 endwhile
     </textarea
           >
