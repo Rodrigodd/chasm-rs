@@ -111,10 +111,10 @@ impl std::fmt::Display for OrList<'_> {
         if len == 1 {
             return Ok(());
         }
-        for t in &self.0[1..len-1] {
+        for t in &self.0[1..len - 1] {
             write!(f, ", {}", t)?;
         }
-        write!(f, " or {}", self.0[len-1])
+        write!(f, " or {}", self.0[len - 1])
     }
 }
 
@@ -143,7 +143,7 @@ impl Error<'_> {
                     .contains(&self.span.start)
                     .then(|| (line + 1, column + 1))
             })
-        .unwrap_or((0, 0))
+            .unwrap_or((0, 0))
     }
 }
 impl std::fmt::Display for Error<'_> {
@@ -156,7 +156,8 @@ impl std::fmt::Display for Error<'_> {
                 write!(
                     f,
                     "unexpected token value, expected {}, received {}",
-                    OrList(expected), received
+                    OrList(expected),
+                    received
                 )
             }
             ErrorKind::ParseFloatError(x) => {
@@ -228,7 +229,6 @@ pub enum Type {
     I32,
     F32,
 }
-
 
 pub struct Procedure {
     pub idx: FuncIdx,
@@ -481,7 +481,6 @@ impl<'s> Parser<'s> {
 
         // setpixel calls are hardcoded in the compiler
         if ident == "setpixel" {
-
             // yes, setpixel calls cause side effects in variables
             let start = self.current.1.start;
             let expr = self.expression(ctx)?;
@@ -749,16 +748,14 @@ impl<'s> Parser<'s> {
                     _ => unreachable!("I already match the token operator"),
                 }
             }
-            _ => {
-                Err(Error {
-                    source: self.source,
-                    span: self.current.1.clone(),
-                    kind: ErrorKind::UnexpectedToken {
-                        expected: &[Token::Number, Token::LeftParen],
-                        received: self.current.clone().0,
-                    },
-                })
-            }
+            _ => Err(Error {
+                source: self.source,
+                span: self.current.1.clone(),
+                kind: ErrorKind::UnexpectedToken {
+                    expected: &[Token::Number, Token::LeftParen],
+                    received: self.current.clone().0,
+                },
+            }),
         }
     }
 }

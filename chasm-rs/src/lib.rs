@@ -43,7 +43,7 @@ fn write_section(w: &mut Vec<u8>, section_type: u8, f: impl Fn(&mut Vec<u8>)) {
 /// linear memory, in the range 0..10000.
 ///
 /// # Example
-/// ``` 
+/// ```
 /// let source = "
 ///     var y = 0
 ///     while (y < 100)
@@ -55,7 +55,7 @@ fn write_section(w: &mut Vec<u8>, section_type: u8, f: impl Fn(&mut Vec<u8>)) {
 ///         endwhile
 ///         y = (y + 1)
 ///     endwhile";
-/// 
+///
 /// let wasm = chasm_rs::compile(source);
 ///
 /// assert!(wasm.is_ok());
