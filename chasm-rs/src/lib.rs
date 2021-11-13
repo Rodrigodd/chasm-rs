@@ -1,3 +1,9 @@
+//! This crate is a single-pass compiler to WebAssembly for the language chasm.
+//!
+//! chasm is a very simple language created by Colin Eberhardt, to introduce the basic building
+//! blocks of compilers, and reveal some of the inner workings of WebAssembly. This is a
+//! implementation of the compiler in Rust.
+#![deny(missing_docs)]
 use std::io::Write;
 
 mod wasm_macro;
@@ -27,7 +33,33 @@ fn write_section(w: &mut Vec<u8>, section_type: u8, f: impl Fn(&mut Vec<u8>)) {
     w[section_start..].rotate_right(len);
 }
 
-/// Compile the given chasm source code in a wasm binary.
+/// Compile the given chasm source code in a WebAssembly module.
+///
+/// The created module imports the function `"env" "print"` that received a f32 and return nothing,
+/// and a memory `"env" "memory"` with a minimal size of 1, and exports the function `"main"`, that
+/// has no argument or return, which is the code entry point.
+///
+/// At the end of the execution of the created module, the rendered 100x100 output will be in the
+/// linear memory, in the range 0..10000.
+///
+/// # Example
+/// ``` 
+/// let source = "
+///     var y = 0
+///     while (y < 100)
+///         var x = 0
+///         while (x < 100)
+///             c = ((y/100)*255)
+///             setpixel (x, y, c)
+///             x = (x + 1)
+///         endwhile
+///         y = (y + 1)
+///     endwhile";
+/// 
+/// let wasm = chasm_rs::compile(source);
+///
+/// assert!(wasm.is_ok());
+/// ```
 pub fn compile<'s>(source: &'s str) -> Result<Vec<u8>, Error<'s>> {
     let functions = compiler::Parser::parse(source)?;
 

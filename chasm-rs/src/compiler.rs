@@ -3,10 +3,12 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::num::ParseFloatError;
 
+/// Tokens of the chasm language, based completely on the scanner of the original implementation:
+/// https://github.com/ColinEberhardt/chasm/blob/master/src/tokenizer.ts#L41
+/// There are some differences, but I hope that they are equivalent
 #[derive(Logos, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum Token {
-    // this regex for number don't make much sense, but it is this way in my reference:
-    // https://github.com/ColinEberhardt/chasm/blob/master/src/tokenizer.ts#L41
+    // this regex for number doesn't make a lot of sense, but it is like that in the original
     #[regex(r"-?[.0-9]+([eE]-?[0-9][0-9])?")]
     Number,
     #[token("print")]
@@ -97,6 +99,7 @@ impl std::fmt::Display for Token {
 
 use crate::wasm_macro::wasm;
 
+/// Print a slice in the format "0, 1, 2 or 3"
 struct OrList<'a>(&'a [Token]);
 impl std::fmt::Display for OrList<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -115,13 +118,20 @@ impl std::fmt::Display for OrList<'_> {
     }
 }
 
+/// A compilation error.
+///
+/// Contains a span and a reference to the source code to allow better error formatting.
 #[derive(Debug)]
 pub struct Error<'source> {
+    /// A reference to the source code.
     pub source: &'source str,
+    /// The byte range of the source code this error is referencing.
     pub span: Span,
+    /// The type of error.
     pub kind: ErrorKind,
 }
 impl Error<'_> {
+    /// Get the line and column of the start of the Error's span. The fist line and column are 1.
     pub fn get_line_column(&self) -> (usize, usize) {
         self.source
             .lines()
@@ -174,22 +184,36 @@ impl std::fmt::Display for Error<'_> {
 }
 impl std::error::Error for Error<'_> {}
 
+/// The type of compilation error.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ErrorKind {
+    /// The parser was expecting some set of tokens, but received a unexpected one.
     UnexpectedToken {
+        /// Set of expected tokens
         expected: &'static [Token],
+        /// Received token
         received: Token,
     },
+    /// The parsing of a number in string format to float has failed.
     ParseFloatError(ParseFloatError),
+    /// There is a mismatch in the number of arguments in a procedure call and a procedure
+    /// definition.
     ArgumentNumberMismatch {
+        /// Expected number of arguments
         expected: u32,
+        /// Received number of arguments
         received: u32,
     },
+    /// Expected a Type or a pair of Type, but received a unexpected one.
     UnexpectedType {
+        /// Expected type
         expected: &'static [Type],
+        /// Received type
         received: Vec<Type>,
     },
+    /// There is a procedure call to a undefined procedure.
     UndeclaredProc {
+        /// The name of the undefined procedure
         name: String,
     },
 }
@@ -204,6 +228,7 @@ pub enum Type {
     I32,
     F32,
 }
+
 
 pub struct Procedure {
     pub idx: FuncIdx,
@@ -237,7 +262,7 @@ pub struct Parser<'source> {
     procedures: HashMap<String, Procedure>,
 }
 impl<'s> Parser<'s> {
-    pub fn parse(source: &'s str) -> Result<Vec<Procedure>, Error> {
+    pub fn parse(source: &'s str) -> Result<Vec<Procedure>, Error<'s>> {
         let lexer = Token::lexer(source).spanned();
         let mut parser = Self {
             source,
