@@ -19,7 +19,7 @@ mod test;
 
 fn write_section(w: &mut Vec<u8>, section_type: u8, f: impl Fn(&mut Vec<u8>)) {
     // section type
-    w.write(&[section_type]).unwrap();
+    w.write_all(&[section_type]).unwrap();
     let section_start = w.len();
 
     f(w);
@@ -108,7 +108,7 @@ pub fn compile<'s>(source: &'s str) -> Result<Vec<u8>, Error<'s>> {
         // print function type
         for f in &functions {
             leb128::write::unsigned(&mut w, f.code.len() as u64).unwrap();
-            w.write(&f.code).unwrap();
+            w.write_all(&f.code).unwrap();
         }
     });
 

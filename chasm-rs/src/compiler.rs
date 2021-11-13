@@ -44,7 +44,7 @@ pub enum Token {
     #[error]
     #[regex(r"\s+", logos::skip)]
     Error,
-    EOF,
+    Eof,
 }
 impl Token {
     /// Return a reference to a static value with the same variant that self
@@ -67,7 +67,7 @@ impl Token {
             Token::LeftParen => &Token::LeftParen,
             Token::RightParen => &Token::RightParen,
             Token::Error => &Token::Error,
-            Token::EOF => &Token::EOF,
+            Token::Eof => &Token::Eof,
         }
     }
 }
@@ -91,7 +91,7 @@ impl std::fmt::Display for Token {
             Token::LeftParen => "\"(\"",
             Token::RightParen => "\")\"",
             Token::Error => "<error>",
-            Token::EOF => "<eof>",
+            Token::Eof => "<eof>",
         };
         write!(f, "{}", s)
     }
@@ -288,10 +288,10 @@ impl<'s> Parser<'s> {
         };
 
         // compile statements
-        while parser.current.0 != Token::EOF {
+        while parser.current.0 != Token::Eof {
             parser.statement(&mut ctx)?;
         }
-        parser.match_token(Token::EOF)?;
+        parser.match_token(Token::Eof)?;
         wasm!(&mut ctx.code, end);
 
         let locals_index = ctx.code.len();
@@ -327,7 +327,7 @@ impl<'s> Parser<'s> {
         self.current = self.next.clone();
         self.next = self.lexer.next().unwrap_or_else(|| {
             let end = self.source.len();
-            (Token::EOF, end..end)
+            (Token::Eof, end..end)
         });
     }
 
@@ -370,8 +370,8 @@ impl<'s> Parser<'s> {
         symbol: &str,
         num_param: u32,
     ) -> Res<'s, &'a mut Procedure> {
-        if let Some(_) = self.procedures.get_mut(symbol) {
-            // need to borrow twice, because of borrow checker
+        if self.procedures.get_mut(symbol).is_some() {
+            // need to get twice, because of the borrow checker
             let proc = self.procedures.get_mut(symbol).unwrap();
 
             // Err($a) ==>> Err(Error { source: self.source, span: self.current.1.clone(), kind: $a })
@@ -386,7 +386,7 @@ impl<'s> Parser<'s> {
                 });
             }
 
-            return Ok(proc);
+            Ok(proc)
         } else {
             let idx = (self.procedures.len() + 1) as FuncIdx;
             let proc = Procedure {
@@ -394,8 +394,10 @@ impl<'s> Parser<'s> {
                 num_param,
                 code: Vec::new(),
             };
+
             self.procedures.insert(symbol.to_string(), proc);
             let proc = self.procedures.get_mut(symbol).unwrap();
+
             Ok(proc)
         }
     }
@@ -475,12 +477,12 @@ impl<'s> Parser<'s> {
         self.match_token(Token::Identifier)?;
         let ident = &self.source[symbol.1];
 
+        self.match_token(Token::LeftParen)?;
+
         // setpixel calls are hardcoded in the compiler
         if ident == "setpixel" {
-            self.match_token(Token::LeftParen)?;
 
             // yes, setpixel calls cause side effects in variables
-
             let start = self.current.1.start;
             let expr = self.expression(ctx)?;
             self.expect_type(expr, Type::F32, start)?;
@@ -521,8 +523,6 @@ impl<'s> Parser<'s> {
 
             self.match_token(Token::RightParen)?;
         } else {
-            self.match_token(Token::LeftParen)?;
-
             let mut n = 0;
             while self.current.0 != Token::RightParen {
                 let start = self.current.1.start;
@@ -707,7 +707,7 @@ impl<'s> Parser<'s> {
                         if type_a != Type::F32 || type_b != Type::F32 {
                             return Err(Error {
                                 source: self.source,
-                                span: op_token.1.clone(),
+                                span: op_token.1,
                                 kind: ErrorKind::UnexpectedType {
                                     expected: &[Type::F32, Type::F32],
                                     received: vec![type_a, type_b],
@@ -719,7 +719,7 @@ impl<'s> Parser<'s> {
                         if type_a != Type::I32 || type_b != Type::I32 {
                             return Err(Error {
                                 source: self.source,
-                                span: op_token.1.clone(),
+                                span: op_token.1,
                                 kind: ErrorKind::UnexpectedType {
                                     expected: &[Type::I32, Type::I32],
                                     received: vec![type_a, type_b],
@@ -750,7 +750,7 @@ impl<'s> Parser<'s> {
                 }
             }
             _ => {
-                return Err(Error {
+                Err(Error {
                     source: self.source,
                     span: self.current.1.clone(),
                     kind: ErrorKind::UnexpectedToken {
