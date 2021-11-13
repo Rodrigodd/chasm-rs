@@ -1,0 +1,11 @@
+var y = 0
+while (y < 100)
+    var x = 0
+    while (x < 100)
+        c = ((y/100)*255)
+        setpixel (x, y, c)
+        x = (x + 1)
+    endwhile
+    y = (y + 1)
+endwhile
+                          

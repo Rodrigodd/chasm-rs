@@ -3,9 +3,9 @@ proc triangle(x,y,w)
         var a = x
         var b = y
         setpixel ((a + 0), (b + 0), 255)
-        setpixel ((a + 0), (b + 1), 255)
+        setpixel ((a + 0), (b + 1), 180)
         setpixel ((a + 1), (b + 0), 255)
-        setpixel ((a + 1), (b + 1), 255)
+        setpixel ((a + 1), (b + 1), 180)
     else
         w = (w / 2)
         triangle(x, y, w)
