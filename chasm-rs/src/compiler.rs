@@ -231,6 +231,7 @@ impl Context {
 pub struct Parser<'source> {
     source: &'source str,
     lexer: SpannedIter<'source, Token>,
+    last: (Token, Span),
     current: (Token, Span),
     next: (Token, Span),
     procedures: HashMap<String, Procedure>,
@@ -240,6 +241,7 @@ impl<'s> Parser<'s> {
         let lexer = Token::lexer(source).spanned();
         let mut parser = Self {
             source,
+            last: (Token::Error, 0..0),
             current: (Token::Error, 0..0),
             next: (Token::Error, 0..0),
             lexer,
@@ -296,6 +298,7 @@ impl<'s> Parser<'s> {
     }
 
     fn eat_token(&mut self) {
+        self.last = self.current.clone();
         self.current = self.next.clone();
         self.next = self.lexer.next().unwrap_or_else(|| {
             let end = self.source.len();
@@ -323,7 +326,7 @@ impl<'s> Parser<'s> {
         if rec != expec {
             Err(Error {
                 source: self.source,
-                span: start..self.current.1.end,
+                span: start..self.last.1.end,
                 kind: ErrorKind::UnexpectedType {
                     expected: std::slice::from_ref(match expec {
                         Type::I32 => &Type::I32,
@@ -666,9 +669,9 @@ impl<'s> Parser<'s> {
                 // left
                 let type_a = self.expression(ctx)?;
 
-                let op = self.current.clone();
+                let op_token = self.current.clone();
                 self.match_token(Token::Operator)?;
-                let op = &self.source[op.1];
+                let op = &self.source[op_token.1.clone()];
 
                 // right
                 let type_b = self.expression(ctx)?;
@@ -679,7 +682,7 @@ impl<'s> Parser<'s> {
                         if type_a != Type::F32 || type_b != Type::F32 {
                             return Err(Error {
                                 source: self.source,
-                                span: self.current.1.clone(),
+                                span: op_token.1.clone(),
                                 kind: ErrorKind::UnexpectedType {
                                     expected: &[Type::F32, Type::F32],
                                     received: vec![type_a, type_b],
@@ -691,7 +694,7 @@ impl<'s> Parser<'s> {
                         if type_a != Type::I32 || type_b != Type::I32 {
                             return Err(Error {
                                 source: self.source,
-                                span: self.current.1.clone(),
+                                span: op_token.1.clone(),
                                 kind: ErrorKind::UnexpectedType {
                                     expected: &[Type::I32, Type::I32],
                                     received: vec![type_a, type_b],
