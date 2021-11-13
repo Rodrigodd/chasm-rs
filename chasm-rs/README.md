@@ -18,7 +18,7 @@ chasm-rs = "0.1.0"
 And then simply call `chasm_rs::compile` to compile a source code to a
 WebAssembly module:
 
-```php
+```rust
 let source = "
     var y = 0
     while (y < 100)
