@@ -9,5 +9,5 @@ edition = "2018"
 
 chasm-rs = { path = "../chasm-rs" }
 wasmer = "2"
-minifb = "0.19"
+minifb = "0.23"
 anyhow = "1"
