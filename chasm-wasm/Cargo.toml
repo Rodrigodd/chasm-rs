@@ -12,6 +12,3 @@ crate-type = ["cdylib"]
 
 wasm-bindgen = "0.2"
 chasm-rs = { path = "../chasm-rs" }
-
-[profile.release]
-lto = true
